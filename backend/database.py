@@ -33,7 +33,8 @@ def init_db():
     """Crear todas las tablas en la BD + migración liviana de columnas nuevas."""
     from backend.models import (
         Siniestro, Workshop, Invoice, InvoiceItem,
-        TariffItem, AuditResult, AuditFinding
+        TariffItem, AuditResult, AuditFinding,
+        Poliza, AseguradoSintetico, Vehiculo, Documento
     )
     Base.metadata.create_all(bind=engine)
     _migrate_columns()

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Auditor Agéntico de Facturación - Hackathon 2026</title>
+    <title>Miraclex — Detector Agéntico de Fraude en Siniestros | Hackathon 2026</title>
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -55,7 +55,7 @@
         }
 
         .logo-container {
-            height: 220px; /* Tamaño aumentado */
+            height: 220px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -127,9 +127,9 @@
         p.subtitle {
             font-size: 1.25rem;
             color: var(--text-muted);
-            max-width: 700px;
+            max-width: 740px;
             margin: 0 auto 48px;
-            line-height: 1.6;
+            line-height: 1.7;
             animation: fadeInUp 0.8s ease-out 0.4s both;
         }
 
@@ -324,12 +324,12 @@
     </header>
 
     <div class="container hero">
-        <div class="badge">HackIAthon 2026</div>
+        <div class="badge">HackIAthon 2026 — Equipo Miraclex</div>
         
-        <h1>Auditor <span class="highlight">Agéntico</span><br>de Facturación</h1>
+        <h1>Detector <span class="highlight">Agéntico</span><br>de Fraude en Siniestros</h1>
         
         <p class="subtitle">
-            Plataforma <strong>agéntica</strong> que orquesta agentes de IA Generativa para auditar facturas de siniestros vehiculares de extremo a extremo: detecta sobrecobros, duplicados e incoherencias mecánicas, gestiona aprobaciones y emite notificaciones formales al taller — reduciendo el tiempo de revisión y optimizando los recursos del sector asegurador.
+            Plataforma <strong>inteligente</strong> que audita automáticamente facturas de siniestros vehiculares para detectar posibles fraudes, sobrecobros, duplicados e incoherencias mecánicas — antes de que un centavo salga de la aseguradora. Combina un motor de reglas determinísticas con <strong>Gemini 2.5 Flash</strong> para una detección de riesgo de extremo a extremo.
         </p>
 
         <div class="cta-container">
@@ -341,7 +341,7 @@
                     <path d="m12 5 7 7-7 7"></path>
                 </svg>
             </a>
-            <p style="margin-top:16px; font-size:0.85rem; color:var(--text-muted);">El motor backend y la IA están operativos.</p>
+            <p style="margin-top:16px; font-size:0.85rem; color:var(--text-muted);">FastAPI + SQLite operativos. El motor de IA funciona en modo mock sin API key.</p>
         </div>
 
         <div class="features">
@@ -350,15 +350,23 @@
                     <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
                 </div>
                 <h3>Detección de Fraude</h3>
-                <p>El motor determinístico combinado con Gemini 2.5 Flash verifica al milímetro cada ítem contra el tarifario maestro, descubriendo costos inflados instantáneamente.</p>
+                <p>Cruza cada factura contra el tarifario maestro, el siniestro declarado y el historial de facturas. Detecta sobrecobros, duplicados, cantidades anómalas, re-facturación e ítems mecánicamente incoherentes.</p>
             </div>
 
             <div class="feature-card">
                 <div class="feature-icon">
-                    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                </div>
+                <h3>Motor Dual: Reglas + IA</h3>
+                <p>Un motor determinístico (1-2s) audita con reglas de negocio. Gemini 2.5 Flash (15-30s) añade razonamiento cualitativo, detección de patrones cruzados y auto-reflexión para reducir falsos positivos.</p>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                 </div>
                 <h3>Auditoría de PDFs</h3>
-                <p>Sube las facturas en formato PDF usando Drag & Drop. El sistema extrae el contenido automáticamente y las audita usando un enfoque Just-In-Time.</p>
+                <p>Arrastra las facturas en formato PDF. El sistema extrae ítems, RUC y clave de acceso SRI automáticamente. Genera reportes internos (con análisis de riesgo) y notificaciones formales al taller.</p>
             </div>
 
             <div class="feature-card">
@@ -366,14 +374,30 @@
                     <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
                 </div>
                 <h3>Panel de Control 360°</h3>
-                <p>Visualiza KPIs interactivos, administra las aprobaciones y genera reportes financieros formales en PDF adaptados tanto para auditores como para los talleres.</p>
+                <p>Visualiza KPIs en tiempo real, distribución de hallazgos, siniestros por día y cola de pendientes. Gestiona aprobaciones, escalaciones y el tarifario maestro desde un único tablero.</p>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                </div>
+                <h3>Reportes PDF Automáticos</h3>
+                <p>Genera dos tipos de reportes al instante: uno interno con análisis de riesgo confidencial para el auditor, y una notificación profesional al taller con ajustes requeridos — sin lenguaje acusatorio.</p>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                </div>
+                <h3>Asistente IA con Restricciones</h3>
+                <p>Un chatbot flotante responde consultas sobre siniestros, proveedores y hallazgos. Respeta perfiles de acceso y nunca emite acusaciones directas: siempre recomienda revisión humana.</p>
             </div>
         </div>
     </div>
 
     <footer>
         <div class="creators">
-            <div class="creators-title">Arquitectura y Desarrollo de Software - HackIAthon 2026 | Equipo Miraclex</div>
+            <div class="creators-title">Arquitectura y Desarrollo de Software — HackIAthon 2026 | Equipo Miraclex</div>
             <div class="creators-names">
                 Josue Salazar &nbsp;·&nbsp; Andres Abad &nbsp;·&nbsp; Andres Falconi
             </div>

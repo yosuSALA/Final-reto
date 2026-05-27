@@ -22,7 +22,8 @@ from backend.agent import AuditAgent
 from backend.models import (
     Siniestro, Invoice, InvoiceItem, TariffItem,
     AuditResult, AuditFinding, Workshop, AuditStatus,
-    FindingSeverity, FindingType, Ramo, Cobertura, EstadoSiniestro
+    FindingSeverity, FindingType, Ramo, Cobertura, EstadoSiniestro,
+    Poliza, AseguradoSintetico, Vehiculo, Documento
 )
 
 app = FastAPI(title="Auditor Agentico de Siniestros", version="1.0.0")
@@ -331,19 +332,27 @@ def delete_tariff(tariff_id: int, db: Session = Depends(get_db)):
 
 @app.get("/api/claims")
 def get_claims(db: Session = Depends(get_db)):
-    siniestros = db.query(Siniestro).all()
+    siniestros = db.query(Siniestro).filter(Siniestro.ramo == Ramo.VEHICULOS).all()
     output = []
     for s in siniestros:
         invoices = db.query(Invoice).filter(Invoice.siniestro_id == s.id_siniestro).all()
         audit = db.query(AuditResult).filter(AuditResult.siniestro_id == s.id_siniestro).first()
+        owner_name = s.id_asegurado
+        if s.asegurado_rel and s.asegurado_rel.nombre:
+            owner_name = s.asegurado_rel.nombre
+        vehicle_plate = s.vehiculo_rel.placa if s.vehiculo_rel and s.vehiculo_rel.placa else "N/D"
+        if s.vehiculo_rel:
+            vehicle = " ".join([x for x in [s.vehiculo_rel.marca, s.vehiculo_rel.modelo, str(s.vehiculo_rel.anio or "")] if x]).strip()
+        else:
+            vehicle = "N/D"
         output.append({
             "id": s.id_siniestro,
             "claim_number": f"SIN-{s.id_siniestro}",
             "claim_type": s.ramo.value,
             "description": s.descripcion or "",
-            "vehicle_plate": "",
-            "vehicle": "",
-            "insured_name": s.id_asegurado,
+            "vehicle_plate": vehicle_plate,
+            "vehicle": vehicle or "N/D",
+            "insured_name": owner_name,
             "policy_number": s.id_poliza,
             "incident_date": s.fecha_ocurrencia.isoformat() if s.fecha_ocurrencia else None,
             "invoice_count": len(invoices),
@@ -351,6 +360,69 @@ def get_claims(db: Session = Depends(get_db)):
             "risk_score": audit.risk_score if audit else None,
         })
     return output
+
+
+@app.get("/api/claims/{claim_id}/executive-summary")
+def get_claim_executive_summary(claim_id: int, db: Session = Depends(get_db)):
+    siniestro = db.query(Siniestro).filter(Siniestro.id_siniestro == claim_id).first()
+    if not siniestro:
+        raise HTTPException(status_code=404, detail="Siniestro no encontrado")
+
+    owner_id = siniestro.id_asegurado
+    owner_name = siniestro.asegurado_rel.nombre if siniestro.asegurado_rel and siniestro.asegurado_rel.nombre else owner_id
+    veh = siniestro.vehiculo_rel
+
+    owner_claims = db.query(Siniestro).filter(
+        Siniestro.id_asegurado == owner_id,
+        Siniestro.ramo == Ramo.VEHICULOS,
+    ).order_by(Siniestro.fecha_ocurrencia.desc()).all()
+
+    if veh and veh.id:
+        vehicle_claims = db.query(Siniestro).filter(Siniestro.vehiculo_id == veh.id).order_by(Siniestro.fecha_ocurrencia.desc()).all()
+    else:
+        vehicle_claims = [siniestro]
+
+    def _row(c):
+        a = db.query(AuditResult).filter(AuditResult.siniestro_id == c.id_siniestro).order_by(AuditResult.audited_at.desc()).first()
+        return {
+            "claim_number": f"SIN-{c.id_siniestro}",
+            "coverage": c.cobertura.value if c.cobertura else "",
+            "date": c.fecha_ocurrencia.isoformat() if c.fecha_ocurrencia else None,
+            "amount": c.monto_reclamado or 0,
+            "risk_score": a.risk_score if a else None,
+            "audit_status": a.status.value if a else "pending",
+        }
+
+    current_audit = db.query(AuditResult).filter(AuditResult.siniestro_id == siniestro.id_siniestro).order_by(AuditResult.audited_at.desc()).first()
+    missing_docs = [d.tipo_documento for d in (siniestro.documentos or []) if not d.entregado]
+    inconsistent_docs = [d.tipo_documento for d in (siniestro.documentos or []) if d.inconsistencia_detectada]
+
+    return {
+        "claim": {
+            "claim_number": f"SIN-{siniestro.id_siniestro}",
+            "policy_number": siniestro.id_poliza,
+            "insured_name": owner_name,
+            "insured_id": owner_id,
+            "vehicle": {
+                "plate": veh.placa if veh else "N/D",
+                "brand": veh.marca if veh else "N/D",
+                "model": veh.modelo if veh else "N/D",
+                "year": veh.anio if veh else None,
+            },
+            "risk_score": current_audit.risk_score if current_audit else None,
+            "audit_status": current_audit.status.value if current_audit else "pending",
+            "missing_documents": missing_docs,
+            "inconsistent_documents": inconsistent_docs,
+        },
+        "owner_history": [_row(c) for c in owner_claims],
+        "vehicle_history": [_row(c) for c in vehicle_claims],
+        "executive_summary": (
+            f"Vehiculo {veh.placa if veh and veh.placa else 'N/D'} asociado a {len(vehicle_claims)} siniestro(s). "
+            f"Asegurado {owner_name} registra {len(owner_claims)} siniestro(s) en historial. "
+            f"Caso actual requiere revision humana priorizada."
+        ),
+        "note": "Alerta de posible fraude; no constituye acusacion automatica.",
+    }
 
 
 @app.get("/api/claims/{claim_id}/invoices")
@@ -742,12 +814,8 @@ async def audit_pdf_upload(
     pdf_policy = (invoice_data.get("policy_number") or "").strip()
     pdf_insured = (invoice_data.get("insured_name") or "").strip()
 
+    # Este prototipo está acotado a Vehiculos para el reto actual
     ramo_enum = Ramo.VEHICULOS
-    if pdf_claim_type:
-        try:
-            ramo_enum = Ramo(pdf_claim_type)
-        except ValueError:
-            pass
 
     siniestro = None
     effective_ref = (claim_number or "").strip() or pdf_claim_number or pdf_policy
@@ -1179,3 +1247,120 @@ def get_claim_notify_config(claim_id: int, db: Session = Depends(get_db)):
             workshop_email = inv.workshop.email
             break
     return {"claim_id": claim_id, "workshop_email": workshop_email, "notify_emails": notify_emails}
+
+
+# ── Endpoints de scoring de fraude y chatbot (hackIAthon Aseguradora del Sur) ──
+
+@app.post("/api/agent/query")
+def query_agent(data: dict, db: Session = Depends(get_db)):
+    """Procesa consultas en lenguaje natural de la Unidad Antifraude."""
+    question = data.get("question", "")
+    if not question:
+        raise HTTPException(status_code=400, detail="Falta la pregunta")
+    from backend.chatbot_agent import process_chatbot_query
+    answer = process_chatbot_query(question, db)
+    return {"answer": answer}
+
+
+@app.get("/api/siniestros/{claim_id}/fraud-score")
+def get_claim_fraud_score(claim_id: int, db: Session = Depends(get_db)):
+    """Calcula y devuelve el score de fraude y las reglas evaluadas de un siniestro."""
+    siniestro = db.query(Siniestro).filter(Siniestro.id_siniestro == claim_id).first()
+    if not siniestro:
+        raise HTTPException(status_code=404, detail="Siniestro no encontrado")
+    from backend.fraud_scoring import evaluate_fraud_scoring
+    res = evaluate_fraud_scoring(siniestro, db)
+    return res
+
+
+@app.post("/api/siniestros/score-all")
+def score_all_claims(db: Session = Depends(get_db)):
+    """Calcula y actualiza los scores de fraude de todos los siniestros en la base de datos."""
+    siniestros = db.query(Siniestro).all()
+    from backend.fraud_scoring import update_siniestro_fraud_data
+    cnt = 0
+    for s in siniestros:
+        update_siniestro_fraud_data(s, db)
+        cnt += 1
+    db.commit()
+    return {"status": "success", "scored_count": cnt}
+
+
+@app.get("/api/siniestros/ranking")
+def get_claims_ranking(db: Session = Depends(get_db)):
+    """Devuelve el listado de siniestros ordenado por score de fraude."""
+    claims = db.query(Siniestro).order_by(Siniestro.fraud_score.desc()).all()
+    res = []
+    for c in claims:
+        res.append({
+            "id_siniestro": c.id_siniestro,
+            "id_poliza": c.id_poliza,
+            "id_asegurado": c.id_asegurado,
+            "ramo": c.ramo.value,
+            "cobertura": c.cobertura.value,
+            "fecha_ocurrencia": c.fecha_ocurrencia.isoformat() if c.fecha_ocurrencia else None,
+            "monto_reclamado": c.monto_reclamado,
+            "fraud_score": c.fraud_score,
+            "fraud_classification": c.fraud_classification,
+            "description": c.descripcion,
+            "documentos_completos": bool(c.documentos_completos)
+        })
+    return res
+
+
+@app.get("/api/fraud-dashboard")
+def get_fraud_dashboard(db: Session = Depends(get_db)):
+    """Devuelve KPIs y estadísticas para el dashboard de fraude."""
+    claims = db.query(Siniestro).all()
+    total_claims = len(claims)
+    if total_claims == 0:
+        return {
+            "total_claims": 0,
+            "by_classification": {"rojo": 0, "amarillo": 0, "verde": 0},
+            "total_reclaimed": 0.0,
+            "reclaimed_under_risk": 0.0,
+            "pct_under_risk": 0.0,
+            "by_ramo": []
+        }
+    
+    rojo_count = sum(1 for c in claims if c.fraud_classification == "Rojo")
+    amarillo_count = sum(1 for c in claims if c.fraud_classification == "Amarillo")
+    verde_count = sum(1 for c in claims if c.fraud_classification == "Verde")
+    
+    total_reclamado = sum(c.monto_reclamado or 0 for c in claims)
+    reclamado_rojo = sum(c.monto_reclamado or 0 for c in claims if c.fraud_classification == "Rojo")
+    reclamado_amarillo = sum(c.monto_reclamado or 0 for c in claims if c.fraud_classification == "Amarillo")
+    
+    # Ramos sospechosos
+    from collections import defaultdict
+    ramo_totals = defaultdict(int)
+    ramo_rojo = defaultdict(int)
+    for c in claims:
+        r = c.ramo.value
+        ramo_totals[r] += 1
+        if c.fraud_classification == "Rojo":
+            ramo_rojo[r] += 1
+            
+    ramos_data = []
+    for r, total in ramo_totals.items():
+        rojos = ramo_rojo[r]
+        ramos_data.append({
+            "ramo": r,
+            "total": total,
+            "rojos": rojos,
+            "pct_rojo": round((rojos / total * 100) if total > 0 else 0, 1)
+        })
+    ramos_data.sort(key=lambda x: x["pct_rojo"], reverse=True)
+    
+    return {
+        "total_claims": total_claims,
+        "by_classification": {
+            "rojo": rojo_count,
+            "amarillo": amarillo_count,
+            "verde": verde_count
+        },
+        "total_reclaimed": round(total_reclamado, 2),
+        "reclaimed_under_risk": round(reclamado_rojo + reclamado_amarillo, 2),
+        "pct_under_risk": round(((rojo_count + amarillo_count) / total_claims * 100) if total_claims > 0 else 0, 1),
+        "by_ramo": ramos_data
+    }

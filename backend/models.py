@@ -84,13 +84,85 @@ class Workshop(Base):
     invoices = relationship("Invoice", back_populates="workshop")
 
 
+class AseguradoSintetico(Base):
+    """Asegurado."""
+    __tablename__ = "asegurados_sinteticos"
+
+    id_asegurado = Column(String(50), primary_key=True)
+    nombre = Column(String(150))
+    segmento = Column(String(50))
+    antiguedad = Column(Integer)  # en años
+    ciudad = Column(String(100))
+    numero_polizas = Column(Integer, default=1)
+    reclamos_12m = Column(Integer, default=0)
+    mora_actual = Column(Integer, default=0)  # 0 = No, 1 = Sí
+    score_cliente_simulado = Column(Float, default=100.0)
+
+    polizas = relationship("Poliza", back_populates="asegurado")
+    siniestros = relationship("Siniestro", back_populates="asegurado_rel")
+
+
+class Poliza(Base):
+    """Póliza de seguro."""
+    __tablename__ = "polizas"
+
+    id_poliza = Column(String(20), primary_key=True)
+    id_asegurado = Column(String(50), ForeignKey("asegurados_sinteticos.id_asegurado"), nullable=False)
+    ramo = Column(SQLEnum(Ramo), nullable=False)
+    fecha_inicio = Column(DateTime, nullable=False)
+    fecha_fin = Column(DateTime, nullable=False)
+    prima = Column(Float, nullable=False)
+    suma_asegurada = Column(Float, nullable=False)
+    deducible = Column(Float, nullable=False)
+    canal_venta = Column(String(50))
+    ciudad = Column(String(100))
+    estado_poliza = Column(String(20))  # Vigente, Suspendida, Anulada
+
+    asegurado = relationship("AseguradoSintetico", back_populates="polizas")
+    vehiculos = relationship("Vehiculo", back_populates="poliza")
+    siniestros = relationship("Siniestro", back_populates="poliza_rel")
+
+
+class Vehiculo(Base):
+    """Vehículo asociado a póliza y siniestros."""
+    __tablename__ = "vehiculos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    id_poliza = Column(String(20), ForeignKey("polizas.id_poliza"), nullable=True)
+    placa = Column(String(20), index=True)
+    chasis = Column(String(50))
+    motor = Column(String(50))
+    marca = Column(String(100))
+    modelo = Column(String(100))
+    anio = Column(Integer)
+
+    poliza = relationship("Poliza", back_populates="vehiculos")
+    siniestros = relationship("Siniestro", back_populates="vehiculo_rel")
+
+
+class Documento(Base):
+    """Documento digitalizado asociado al siniestro."""
+    __tablename__ = "documentos"
+
+    id_documento = Column(Integer, primary_key=True, index=True)
+    id_siniestro = Column(Integer, ForeignKey("siniestros.id_siniestro"), nullable=False)
+    tipo_documento = Column(String(100), nullable=False)
+    entregado = Column(Integer, default=1)  # 0=No, 1=Sí
+    legible = Column(Integer, default=1)  # 0=No, 1=Sí
+    fecha_emision = Column(DateTime)
+    inconsistencia_detectada = Column(Integer, default=0)  # 0=No, 1=Sí
+    observacion = Column(Text)
+
+    siniestro = relationship("Siniestro", back_populates="documentos")
+
+
 class Siniestro(Base):
     """Siniestro reportado."""
     __tablename__ = "siniestros"
 
     id_siniestro = Column(Integer, primary_key=True, index=True)
-    id_poliza = Column(String(20), nullable=False, index=True)
-    id_asegurado = Column(String(50), nullable=False, index=True)
+    id_poliza = Column(String(20), ForeignKey("polizas.id_poliza"), nullable=False, index=True)
+    id_asegurado = Column(String(50), ForeignKey("asegurados_sinteticos.id_asegurado"), nullable=False, index=True)
     ramo = Column(SQLEnum(Ramo), nullable=False)
     cobertura = Column(SQLEnum(Cobertura), nullable=False)
     fecha_ocurrencia = Column(DateTime, nullable=False)
@@ -109,6 +181,18 @@ class Siniestro(Base):
     historial_siniestros_asegurado = Column(Integer, default=0)
     etiqueta_fraude_simulada = Column(Integer)  # 0/1, solo para entrenamiento
 
+    # Nuevos campos para scoring de fraude
+    fraud_score = Column(Float, default=0.0)
+    fraud_classification = Column(String(20), default="Verde")  # Verde, Amarillo, Rojo
+    fraud_indicators = Column(Text, default="[]")  # JSON string
+    fraud_rules_failed = Column(Text, default="[]")  # JSON string
+
+    vehiculo_id = Column(Integer, ForeignKey("vehiculos.id"), nullable=True)
+
+    poliza_rel = relationship("Poliza", back_populates="siniestros")
+    asegurado_rel = relationship("AseguradoSintetico", back_populates="siniestros")
+    vehiculo_rel = relationship("Vehiculo", back_populates="siniestros")
+    documentos = relationship("Documento", back_populates="siniestro", cascade="all, delete-orphan")
     invoices = relationship("Invoice", back_populates="siniestro")
     audit_results = relationship("AuditResult", back_populates="siniestro")
 

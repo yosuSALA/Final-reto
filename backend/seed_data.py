@@ -162,6 +162,8 @@ def seed_database():
         InvoiceItem(invoice_id=inv5.id, code="MO-PIN01", description="Mano de obra pintura (hora)", category="mano_obra", quantity=6, unit_price=21.00, total_price=126.00),
     ])
     db.commit()
+    from backend.seed_fraud_data import seed_fraud_data
+    seed_fraud_data(db)
     db.close()
     print("Base de datos inicializada con datos demo.")
 

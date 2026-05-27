@@ -1,5 +1,6 @@
 // Shared mutable state (single source of truth)
 export const state = {
+    currentProfile: localStorage.getItem("currentProfile") || "demo_jurado",
     dashboardData: null,
     auditResults: [],
     pendingInvoices: [],

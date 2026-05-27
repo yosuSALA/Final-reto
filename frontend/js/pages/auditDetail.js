@@ -1,9 +1,11 @@
 import { apiFetch, apiPost, API } from "../api.js";
 import { showToast, renderStatusBadge } from "../utils.js";
+import { getPermissions } from "../auth.js";
 
 export async function loadAuditDetail(auditId) {
     const data = await apiFetch(`/audit-results/${auditId}`);
     if (!data) return;
+    const perms = getPermissions();
     const page = document.getElementById("page-audit-detail");
     const riskColor = data.risk_score >= 70 ? "#ef4444" : data.risk_score >= 30 ? "#f59e0b" : "#10b981";
     const circumference = 2 * Math.PI * 45;
@@ -36,10 +38,10 @@ export async function loadAuditDetail(auditId) {
                 <button class="btn btn-info btn-sm" onclick="reAuditWith(${data.invoice_id}, 'rules')" style="background-color: var(--accent-emerald); color: white;" title="Re-auditar con motor de reglas (rápido)">⚡ Re-auditar Reglas</button>
                 <button class="btn btn-info btn-sm" onclick="reAuditWith(${data.invoice_id}, 'gemini')" style="background-color: var(--accent-indigo); color: white;" title="Re-auditar con Gemini IA (15-30s)">🤖 Re-auditar IA</button>
                 <button class="btn btn-info btn-sm" onclick="previewReport(${data.audit_id}, 'internal')" style="background-color: #475569; color: white;">Reporte Interno</button>
-                <button class="btn btn-info btn-sm" onclick="previewReport(${data.audit_id}, 'workshop')" style="background-color: #475569; color: white;">Notificación Taller</button>
-                <button class="btn btn-success btn-sm" onclick="auditAction(${data.audit_id}, 'approve')">Aprobar</button>
-                <button class="btn btn-danger btn-sm" onclick="auditAction(${data.audit_id}, 'reject')">Rechazar</button>
-                <button class="btn btn-warning btn-sm" onclick="auditAction(${data.audit_id}, 'escalate')">Escalar</button>
+                ${perms.canNotify ? `<button class="btn btn-info btn-sm" onclick="previewReport(${data.audit_id}, 'workshop')" style="background-color: #475569; color: white;">Notificación Taller</button>` : ""}
+                ${perms.canReviewDecision ? `<button class="btn btn-success btn-sm" onclick="auditAction(${data.audit_id}, 'approve')">Aprobar</button>` : ""}
+                ${perms.canReviewDecision ? `<button class="btn btn-danger btn-sm" onclick="auditAction(${data.audit_id}, 'reject')">Rechazar</button>` : ""}
+                ${perms.canReviewDecision ? `<button class="btn btn-warning btn-sm" onclick="auditAction(${data.audit_id}, 'escalate')">Escalar</button>` : ""}
             </div>
         </div>
         <div class="summary-box">${data.summary || ""}</div>

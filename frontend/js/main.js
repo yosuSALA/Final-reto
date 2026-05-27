@@ -25,6 +25,10 @@ import {
 import {
     loadAuditDetail, auditAction, previewReport, notifyWorkshop, reAuditWith,
 } from "./pages/auditDetail.js";
+import { refreshAuditQueue } from "./components/auditQueue.js";
+import { initChatbotBubble } from "./components/chatbotBubble.js";
+import { applyProfileUI, setProfile } from "./auth.js";
+import { state } from "./state.js";
 
 // Lógica del modo oscuro
 export function toggleTheme() {
@@ -77,7 +81,25 @@ const btnRunAudit = document.getElementById("btn-run-audit");
 if (btnRunAudit) btnRunAudit.addEventListener("click", runFullAudit);
 
 window.addEventListener("hashchange", routeFromHash);
-document.addEventListener("DOMContentLoaded", routeFromHash);
+window.addEventListener("hashchange", refreshAuditQueue);
+document.addEventListener("DOMContentLoaded", () => {
+    routeFromHash();
+    refreshAuditQueue();
+    initChatbotBubble();
+    const profileSelect = document.getElementById("profile-select");
+    if (profileSelect) {
+        profileSelect.value = state.currentProfile;
+        profileSelect.addEventListener("change", (e) => setProfile(e.target.value));
+    }
+    applyProfileUI();
+});
 
 // In case DOMContentLoaded already fired (module loaded after parse)
-if (document.readyState !== "loading") routeFromHash();
+if (document.readyState !== "loading") {
+    routeFromHash();
+    refreshAuditQueue();
+    initChatbotBubble();
+    applyProfileUI();
+}
+
+setInterval(refreshAuditQueue, 15000);
