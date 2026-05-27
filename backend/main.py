@@ -380,7 +380,10 @@ def get_claim_executive_summary(claim_id: int, db: Session = Depends(get_db)):
     if veh and veh.id:
         vehicle_claims = db.query(Siniestro).filter(Siniestro.vehiculo_id == veh.id).order_by(Siniestro.fecha_ocurrencia.desc()).all()
     else:
-        vehicle_claims = [siniestro]
+        vehicle_claims = db.query(Siniestro).filter(
+            Siniestro.id_poliza == siniestro.id_poliza,
+            Siniestro.ramo == Ramo.VEHICULOS,
+        ).order_by(Siniestro.fecha_ocurrencia.desc()).all()
 
     def _row(c):
         a = db.query(AuditResult).filter(AuditResult.siniestro_id == c.id_siniestro).order_by(AuditResult.audited_at.desc()).first()
@@ -1275,8 +1278,8 @@ def get_claim_fraud_score(claim_id: int, db: Session = Depends(get_db)):
 
 @app.post("/api/siniestros/score-all")
 def score_all_claims(db: Session = Depends(get_db)):
-    """Calcula y actualiza los scores de fraude de todos los siniestros en la base de datos."""
-    siniestros = db.query(Siniestro).all()
+    """Calcula y actualiza scores solo para siniestros de vehiculos."""
+    siniestros = db.query(Siniestro).filter(Siniestro.ramo == Ramo.VEHICULOS).all()
     from backend.fraud_scoring import update_siniestro_fraud_data
     cnt = 0
     for s in siniestros:
@@ -1288,8 +1291,8 @@ def score_all_claims(db: Session = Depends(get_db)):
 
 @app.get("/api/siniestros/ranking")
 def get_claims_ranking(db: Session = Depends(get_db)):
-    """Devuelve el listado de siniestros ordenado por score de fraude."""
-    claims = db.query(Siniestro).order_by(Siniestro.fraud_score.desc()).all()
+    """Devuelve siniestros de vehiculos ordenados por score de fraude."""
+    claims = db.query(Siniestro).filter(Siniestro.ramo == Ramo.VEHICULOS).order_by(Siniestro.fraud_score.desc()).all()
     res = []
     for c in claims:
         res.append({
@@ -1310,8 +1313,8 @@ def get_claims_ranking(db: Session = Depends(get_db)):
 
 @app.get("/api/fraud-dashboard")
 def get_fraud_dashboard(db: Session = Depends(get_db)):
-    """Devuelve KPIs y estadísticas para el dashboard de fraude."""
-    claims = db.query(Siniestro).all()
+    """Devuelve KPIs de fraude filtrados al ramo Vehiculos."""
+    claims = db.query(Siniestro).filter(Siniestro.ramo == Ramo.VEHICULOS).all()
     total_claims = len(claims)
     if total_claims == 0:
         return {

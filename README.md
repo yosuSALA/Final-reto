@@ -1,11 +1,17 @@
-# 🛡️ Aseguradora del Sur — Prototipo Antifraude Agéntico
+# Aseguradora del Sur - Prototipo Antifraude Agentico
 
-Sistema agéntico híbrido diseñado para la detección de posibles fraudes en siniestros, asignación de score de riesgo mediante semáforos, auditoría técnica de facturas y asistencia interactiva mediante IA para la Unidad Antifraude de Aseguradora del Sur.
+Sistema agentico hibrido para deteccion de posibles fraudes en siniestros de vehiculos. Genera alertas explicables, score de riesgo (semaforo), auditoria de facturas PDF y asistencia conversacional para analistas.
 
 ---
 
 ## 1. Resumen Ejecutivo
-Este prototipo presenta una solución integral para mitigar el fraude en reclamaciones de seguros. Combina un **Motor de Reglas Determinísticas** (para validación de pólizas, deducibles, vigencias y facturas), un **Motor de Scoring de Fraude** (que evalúa 14 señales ponderadas y 7 reglas de negocio críticas) y un **Agente Conversacional Híbrido** (DeepSeek / Gemini) para auditoría interactiva de casos. La interfaz web responsive integra animaciones fluidas y widgets colapsables para ofrecer una experiencia premium y optimizada.
+El prototipo prioriza casos sospechosos para revision humana en la Unidad Antifraude. Combina:
+- Motor de reglas y scoring de riesgo
+- Auditoria de facturas de taller (PDF)
+- Dashboard ejecutivo con priorizacion
+- Chatbot con preguntas del jurado y consultas por siniestro
+
+Principio clave: la solucion genera alertas de posible fraude; no acusa ni decide pagos/rechazos automaticamente.
 
 ---
 
@@ -21,20 +27,23 @@ El análisis manual de estos factores es lento, costoso y propenso a errores, lo
 ---
 
 ## 3. Objetivos
-- **Automatizar el filtrado**: Procesar el 100% de las facturas y siniestros de forma instantánea.
-- **Calcular Score de Riesgo**: Ponderar 14 señales de fraude para clasificar casos en un semáforo (Verde, Amarillo, Rojo).
-- **Garantizar Explicabilidad**: Acompañar cada alerta con una justificación clara basada en datos facturales y narrativas detalladas.
-- **Asistir en Lenguaje Natural**: Proveer un chatbot cognitivo capaz de responder consultas complejas sobre la base de datos de siniestros.
+- Cargar y procesar datos sinteticos de siniestros de vehiculos.
+- Detectar senales de posible fraude y calcular score 0-100.
+- Clasificar en Verde, Amarillo y Rojo con accion sugerida.
+- Explicar por que cada caso fue marcado.
+- Permitir consultas en lenguaje natural para analistas.
 
 ---
 
 ## 4. Alcance
-El alcance de este prototipo abarca:
+Este prototipo abarca:
 1. Ingestión y estructuración de pólizas, vehículos, asegurados, documentos y siniestros.
 2. Cálculo determinístico de las 14 señales de la rúbrica y las 7 reglas críticas (RF01-RF07).
 3. Auditoría automatizada de facturas (SRI) extrayendo texto de PDFs y contrastándolo con el tarifario homologado.
-4. Asistencia por chat usando modelos de lenguaje (DeepSeek y Gemini 2.5 Flash).
+4. Asistencia por chat usando OpenCode Go (DeepSeek v4 Flash) y Gemini opcional.
 5. Interfaz de usuario SPA con cola de auditoría y chat interactivo colapsables con animaciones de transiciones.
+
+No incluye: acusacion formal, conclusion legal, rechazo automatico de siniestros.
 
 ---
 
@@ -44,7 +53,7 @@ La arquitectura detallada y el flujo se describen en [docs/arquitectura.md](docs
 - **Backend**: Python 3.10+ / FastAPI.
 - **Base de Datos**: SQLite con SQLAlchemy.
 - **Modelado de Datos**: 8 tablas normalizadas (ver [docs/modelo_datos.md](docs/modelo_datos.md)).
-- **Motores de IA**: DeepSeek Chat API y Google Gemini 2.5 Flash.
+- **Motores de IA**: OpenCode Go (DeepSeek v4 Flash por defecto) y Google Gemini 2.5 Flash.
 - **Frontend**: HTML5 / CSS Vanilla / JavaScript Modular (sin paso de compilación).
 - **Procesamiento de Archivos**: pdfplumber (OCR/Extracción Facturas SRI) y reportlab (Generador de Informes PDF).
 
@@ -90,7 +99,7 @@ El puntaje obtenido de las 14 señales se normaliza a una escala de 0-100 y clas
 - **🟡 Amarillo (41 - 75)**: Riesgo Medio. Escalar a Unidad Antifraude para revisión documental.
 - **🔴 Rojo (76 - 100)**: Riesgo Alto. Escalar a Unidad Antifraude para inspección física especializada.
 
-*Nota: El fallo de las reglas críticas RF01 (inconsistencia de ramo) o RF02 (siniestro fuera de vigencia de póliza) fuerza una clasificación automática en Rojo (Score 85+) por motivos de cobertura.*
+Nota operativa: el score se usa para priorizar revision humana, no para decision final automatica.
 
 ---
 
@@ -103,27 +112,39 @@ El puntaje obtenido de las 14 señales se normaliza a una escala de 0-100 y clas
 
 ---
 
-## 10. Instalación y Ejecución
+## 10. Instalacion y Ejecucion
 
 ### 1. Variables de Entorno
 Crea un archivo `.env` en la raíz del proyecto basándote en el archivo `.env.example`:
 ```bash
-GOOGLE_API_KEY=tu_api_key_de_google_aqui
-DEEPSEEK_API_KEY=tu_api_key_de_deepseek_aqui
+# Principal (recomendado): OpenCode Go con modelo explícito
+OPENCODE_GO_API_KEY=tu_api_key_de_opencode_go_aqui
+OPENCODE_GO_API_BASE=https://tu-gateway-opencode-go/v1
+OPENCODE_GO_MODEL=deepseek-v4-flash
+
+# Opcional: fallback directo a DeepSeek
+DEEPSEEK_API_KEY=
+DEEPSEEK_API_BASE=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-chat
+
+# Opcional: Gemini para auditoría IA avanzada
+GOOGLE_API_KEY=
 ```
 
-### 2. Instalación de Dependencias
-Instala los paquetes de Python desde el archivo `requirements.txt` en la raíz:
+Nota: el backend prioriza `OPENCODE_GO_API_KEY` y usa ese gateway como fuente por defecto del chatbot.
+
+### 2. Instalacion de Dependencias
+Instala los paquetes Python:
 ```bash
-pip install -r requirements.txt
+pip install -r backend/requirements.txt
 ```
 
-### 3. Inicialización y Ejecución del Servidor
-Ejecuta el servidor FastAPI con uvicorn:
+### 3. Inicializacion y Ejecucion del Servidor
+Ejecuta FastAPI en puerto 8010:
 ```bash
-python -m uvicorn backend.main:app --reload --port 8000
+python -m uvicorn backend.main:app --reload --port 8010
 ```
-La aplicación se inicializa automáticamente y crea la base de datos SQLite poblada con los ~60 siniestros sintéticos.
+La app inicializa SQLite y carga data sintetica de demo.
 
 ### 4. Ejecución de Pruebas Unitarias
 Para correr la suite de pruebas del motor de reglas:
@@ -131,8 +152,9 @@ Para correr la suite de pruebas del motor de reglas:
 python -m unittest tests/test_fraud_rules.py
 ```
 
-### 5. Acceso al Frontend
-Abre en tu navegador la dirección: `http://localhost:8000/app/`
+### 5. Acceso Web
+- App: `http://localhost:8010/app/`
+- Landing: `http://localhost:8010/`
 
 ---
 
@@ -143,6 +165,7 @@ Abre en tu navegador la dirección: `http://localhost:8000/app/`
    - *¿Por qué el siniestro SIN-6 fue marcado con alto riesgo?*
 3. **Revisar Siniestros y Documentos**: Navega a la pestaña de "Siniestros" para ver el detalle de póliza, vehículos y documentos de cada caso.
 4. **Ver Cola de Auditoría**: Despliega el panel colapsable flotante de pendientes (esquina inferior izquierda) para inspeccionar facturas sin auditar o inicia auditorías de prueba en la sección "Subir PDF".
+5. **Resumen Ejecutivo por Vehiculo**: En la vista de siniestros usa el boton `Resumen` para ver historial del duenio y del vehiculo.
 
 ---
 
@@ -157,3 +180,16 @@ Abre en tu navegador la dirección: `http://localhost:8000/app/`
 - **OCR de Imágenes**: Actualmente el sistema procesa facturas estructuradas en PDF. El siguiente paso es integrar un motor de OCR para digitalizar imágenes de facturas arrugadas o fotos tomadas desde smartphones.
 
 *La documentación sobre fronteras de error se encuentra en [docs/limitaciones.md](docs/limitaciones.md).*
+
+---
+
+## 14. Entregables y Evidencia
+- Matriz de cumplimiento: `docs/MATRIZ_CUMPLIMIENTO_RETO.md`
+- Plan de implementacion: `docs/PLAN_SOFISTICADO_IMPLEMENTACION.md`
+- Loop de revision DeepSeek: `docs/DEEPSEEK_REVIEW_LOOP.md`
+- Perfiles de acceso: `docs/PERFILES_ACCESO.md`
+
+Estado actual recomendado para manana:
+- Cerrar P0 de reglas/score en matriz
+- Ejecutar pruebas de API y flujo UI
+- Ensayar demo de 10 minutos con preguntas del jurado
