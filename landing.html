@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auditor Agéntico de Facturación - Hackathon 2026</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-light: #FDFBF7;
+            --bg-card: rgba(255, 255, 255, 0.85);
+            --primary: #8B5A2B;
+            --primary-hover: #6F4E37;
+            --accent-cyan: #D4A373;
+            --accent-rose: #E07A5F;
+            --text-main: #3E2723;
+            --text-muted: #6D4C41;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-light);
+            color: var(--text-main);
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(139, 90, 43, 0.08) 0%, transparent 40%),
+                radial-gradient(circle at 85% 30%, rgba(212, 163, 115, 0.08) 0%, transparent 40%);
+            background-attachment: fixed;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 24px;
+            flex: 1;
+        }
+
+        /* ── Header / Logo ── */
+        header {
+            width: 100%;
+            padding: 32px 0 8px;
+            display: flex;
+            justify-content: center;
+            animation: fadeInDown 0.8s ease-out;
+        }
+
+        .logo-container {
+            height: 220px; /* Tamaño aumentado */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.3s;
+        }
+        
+        .logo-container:hover {
+            transform: scale(1.05);
+        }
+
+        .logo-container img {
+            max-height: 100%;
+            max-width: 100%;
+            object-fit: contain;
+            filter: drop-shadow(0 10px 15px rgba(139, 90, 43, 0.15));
+            animation: floatLogo 6s ease-in-out infinite;
+        }
+
+        @keyframes floatLogo {
+            0% { transform: translateY(0px) scale(1); filter: drop-shadow(0 10px 15px rgba(139, 90, 43, 0.15)); }
+            50% { transform: translateY(-10px) scale(1.02); filter: drop-shadow(0 20px 25px rgba(139, 90, 43, 0.3)); }
+            100% { transform: translateY(0px) scale(1); filter: drop-shadow(0 10px 15px rgba(139, 90, 43, 0.15)); }
+        }
+
+        /* ── Hero Section ── */
+        .hero {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            position: relative;
+            padding-top: 4px;
+            padding-bottom: 48px;
+            z-index: 1;
+        }
+
+        .badge {
+            background: rgba(139, 90, 43, 0.1);
+            color: var(--primary);
+            padding: 8px 16px;
+            border-radius: 999px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            border: 1px solid rgba(139, 90, 43, 0.2);
+            margin-bottom: 24px;
+            display: inline-block;
+            animation: fadeInDown 0.8s ease-out;
+        }
+
+        h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 4rem;
+            font-weight: 800;
+            line-height: 1.1;
+            margin-bottom: 24px;
+            color: #3E2723;
+            animation: fadeInUp 0.8s ease-out 0.2s both;
+        }
+
+        .highlight {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--accent-cyan) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p.subtitle {
+            font-size: 1.25rem;
+            color: var(--text-muted);
+            max-width: 700px;
+            margin: 0 auto 48px;
+            line-height: 1.6;
+            animation: fadeInUp 0.8s ease-out 0.4s both;
+        }
+
+        /* ── Call to Action ── */
+        .cta-container {
+            position: relative;
+            animation: fadeInUp 0.8s ease-out 0.6s both;
+        }
+
+        .btn-launch {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+            color: #fff;
+            text-decoration: none;
+            padding: 18px 40px;
+            border-radius: 999px;
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.25rem;
+            font-weight: 600;
+            box-shadow: 0 15px 30px rgba(139, 90, 43, 0.3);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-launch::before {
+            content: '';
+            position: absolute;
+            top: 0; left: -100%; width: 100%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent);
+            transition: 0.5s;
+        }
+
+        .btn-launch:hover {
+            transform: translateY(-5px) scale(1.02);
+            box-shadow: 0 20px 40px rgba(139, 90, 43, 0.4);
+        }
+
+        .btn-launch:hover::before {
+            left: 100%;
+        }
+
+        .btn-launch svg {
+            width: 24px;
+            height: 24px;
+            transition: transform 0.3s;
+        }
+
+        .btn-launch:hover svg {
+            transform: translateX(4px);
+        }
+
+        /* ── Features Grid ── */
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+            width: 100%;
+            max-width: 1100px;
+            margin-top: 60px;
+            animation: fadeInUp 1s ease-out 0.8s both;
+        }
+
+        .feature-card {
+            background: var(--bg-card);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            border-radius: 16px;
+            padding: 32px;
+            text-align: left;
+            transition: transform 0.3s, box-shadow 0.3s;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.03);
+        }
+
+        .feature-card::after {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 3px;
+            background: linear-gradient(90deg, var(--primary), var(--accent-cyan));
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.08);
+        }
+
+        .feature-card:hover::after {
+            opacity: 1;
+        }
+
+        .feature-icon {
+            width: 54px;
+            height: 54px;
+            border-radius: 14px;
+            background: rgba(139, 90, 43, 0.1);
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+            transition: transform 0.3s ease;
+        }
+        
+        .feature-card:hover .feature-icon {
+            transform: scale(1.1) rotate(5deg);
+        }
+
+        .feature-icon svg {
+            width: 26px;
+            height: 26px;
+        }
+
+        .feature-card h3 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.3rem;
+            margin-bottom: 12px;
+            color: #3E2723;
+        }
+
+        .feature-card p {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+
+        /* ── Footer / Creadores ── */
+        footer {
+            width: 100%;
+            padding: 30px 24px;
+            text-align: center;
+            border-top: 1px solid rgba(0,0,0,0.05);
+            background: rgba(255,255,255,0.6);
+            backdrop-filter: blur(10px);
+            animation: fadeInUp 1s ease-out 1s both;
+            margin-top: auto;
+        }
+
+        .creators {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .creators-title {
+            font-weight: 600;
+            color: var(--primary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 0.8rem;
+        }
+
+        .creators-names {
+            font-family: 'Outfit', sans-serif;
+            font-weight: 500;
+            font-size: 1.1rem;
+            color: #3E2723;
+        }
+
+        /* ── Animations ── */
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @media (max-width: 768px) {
+            h1 { font-size: 2.8rem; }
+            .hero { padding-top: 20px; }
+            .features { grid-template-columns: 1fr; }
+            .logo-container { height: 140px; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo-container">
+            <!-- Intenta cargar el SVG primero, si falla, carga el PNG -->
+            <img src="/logo/logo.svg" onerror="this.onerror=null; this.src='/logo/logo.png';" alt="Logo Miraclex">
+        </div>
+    </header>
+
+    <div class="container hero">
+        <div class="badge">HackIAthon 2026</div>
+        
+        <h1>Auditor <span class="highlight">Agéntico</span><br>de Facturación</h1>
+        
+        <p class="subtitle">
+            Plataforma <strong>agéntica</strong> que orquesta agentes de IA Generativa para auditar facturas de siniestros vehiculares de extremo a extremo: detecta sobrecobros, duplicados e incoherencias mecánicas, gestiona aprobaciones y emite notificaciones formales al taller — reduciendo el tiempo de revisión y optimizando los recursos del sector asegurador.
+        </p>
+
+        <div class="cta-container">
+            <!-- Enlace directo al Localhost -->
+            <a href="/app/" class="btn-launch">
+                Lanzar Aplicación Web
+                <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M5 12h14"></path>
+                    <path d="m12 5 7 7-7 7"></path>
+                </svg>
+            </a>
+            <p style="margin-top:16px; font-size:0.85rem; color:var(--text-muted);">El motor backend y la IA están operativos.</p>
+        </div>
+
+        <div class="features">
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                </div>
+                <h3>Detección de Fraude</h3>
+                <p>El motor determinístico combinado con Gemini 2.5 Flash verifica al milímetro cada ítem contra el tarifario maestro, descubriendo costos inflados instantáneamente.</p>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                </div>
+                <h3>Auditoría de PDFs</h3>
+                <p>Sube las facturas en formato PDF usando Drag & Drop. El sistema extrae el contenido automáticamente y las audita usando un enfoque Just-In-Time.</p>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+                </div>
+                <h3>Panel de Control 360°</h3>
+                <p>Visualiza KPIs interactivos, administra las aprobaciones y genera reportes financieros formales en PDF adaptados tanto para auditores como para los talleres.</p>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <div class="creators">
+            <div class="creators-title">Arquitectura y Desarrollo de Software - HackIAthon 2026 | Equipo Miraclex</div>
+            <div class="creators-names">
+                Josue Salazar &nbsp;·&nbsp; Andres Abad &nbsp;·&nbsp; Andres Falconi
+            </div>
+        </div>
+    </footer>
+</body>
+</html>

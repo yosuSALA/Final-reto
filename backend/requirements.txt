@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+pydantic
+python-multipart
+reportlab
+google-genai
+pdfplumber
+python-dotenv
+watchdog

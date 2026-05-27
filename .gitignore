@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Entornos virtuales
+venv/
+env/
+.env
+.venv
+
+# Base de datos (generada en runtime)
+*.db
+*.sqlite
+*.sqlite3
+
+# PDFs de prueba generados
+test_pdfs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+
+# Logs
+*.log
+
+# Secrets — NUNCA commitear
+.env
+.env.local
+.env.production
+.env.development
+
+# Ignorados específicos del agente
+scratch/
+backend/generated_reports/
