@@ -57,6 +57,16 @@ export function renderSiniestrosView() {
                 </div>
             </div>
         </div>
+
+        <div id="summary-modal" style="display:none; position:fixed; inset:0; z-index:520; background:rgba(0,0,0,0.45); backdrop-filter:blur(4px); align-items:center; justify-content:center;">
+            <div style="background:var(--bg-secondary); border:1px solid var(--border-primary); border-radius:16px; padding:22px; width:100%; max-width:920px; max-height:88vh; overflow:auto; box-shadow:var(--shadow-lg);">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                    <h3 style="margin:0;">Resumen Ejecutivo del Vehículo y Asegurado</h3>
+                    <button class="btn btn-ghost btn-sm" onclick="closeSummaryModal()">Cerrar</button>
+                </div>
+                <div id="summary-content" style="font-size:0.9rem;color:var(--text-secondary);">Cargando...</div>
+            </div>
+        </div>
     `;
 }
 
@@ -75,6 +85,7 @@ function renderClaimRow(c) {
             <td>${renderStatusBadge(c.audit_status)}</td>
             <td>${c.risk_score !== null ? renderRiskBadge(c.risk_score) : '<span class="badge badge-info">N/A</span>'}</td>
             <td onclick="event.stopPropagation()" style="display:flex; gap:6px; align-items:center;">
+                <button class="btn btn-sm" style="background:rgba(2,132,199,0.12); color:var(--accent-blue); border:1px solid rgba(2,132,199,0.2);" onclick="openSummaryModal(${c.id})" title="Ver resumen ejecutivo del vehículo y dueño">Resumen</button>
                 <button class="btn btn-sm" style="background:rgba(99,102,241,0.1); color:var(--accent-indigo); border:1px solid rgba(99,102,241,0.2);" onclick="openNotifyModal(${c.id})" title="Configurar destinatarios de notificación">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,12 2,6"/></svg>
                 </button>
@@ -168,6 +179,7 @@ export async function toggleClaimPreview(claimId) {
 // ── Modal de configuración de destinatarios ─────────────
 
 let _currentNotifyClaimId = null;
+let _currentSummaryClaimId = null;
 
 export async function openNotifyModal(claimId) {
     _currentNotifyClaimId = claimId;
@@ -207,4 +219,56 @@ export async function saveNotifyConfig() {
     } else {
         showToast("Error al guardar destinatarios", "error");
     }
+}
+
+export async function openSummaryModal(claimId) {
+    _currentSummaryClaimId = claimId;
+    const modal = document.getElementById("summary-modal");
+    const content = document.getElementById("summary-content");
+    if (!modal || !content) return;
+    modal.style.display = "flex";
+    content.innerHTML = '<div style="display:flex;align-items:center;gap:8px;"><span class="spinner"></span> Cargando resumen...</div>';
+
+    const data = await apiFetch(`/claims/${claimId}/executive-summary`);
+    if (!data) {
+        content.textContent = "No se pudo cargar el resumen.";
+        return;
+    }
+
+    const c = data.claim || {};
+    const v = c.vehicle || {};
+    const ownerRows = (data.owner_history || []).map((r) => `
+        <tr><td>${r.claim_number}</td><td>${r.coverage || "-"}</td><td>${(r.date || "-").slice(0,10)}</td><td>$${(r.amount || 0).toFixed(2)}</td><td>${r.risk_score ?? "N/A"}</td></tr>
+    `).join("");
+    const vehicleRows = (data.vehicle_history || []).map((r) => `
+        <tr><td>${r.claim_number}</td><td>${r.coverage || "-"}</td><td>${(r.date || "-").slice(0,10)}</td><td>$${(r.amount || 0).toFixed(2)}</td><td>${r.risk_score ?? "N/A"}</td></tr>
+    `).join("");
+
+    content.innerHTML = `
+        <div class="card" style="margin-bottom:12px;"><div class="card-body">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div><strong>Siniestro:</strong> ${c.claim_number || "-"}</div>
+                <div><strong>Póliza:</strong> ${c.policy_number || "-"}</div>
+                <div><strong>Asegurado:</strong> ${c.insured_name || "-"}</div>
+                <div><strong>ID Asegurado:</strong> ${c.insured_id || "-"}</div>
+                <div><strong>Vehículo:</strong> ${v.brand || "-"} ${v.model || ""} ${v.year || ""}</div>
+                <div><strong>Placa:</strong> ${v.plate || "-"}</div>
+                <div><strong>Riesgo actual:</strong> ${c.risk_score ?? "N/A"}</div>
+                <div><strong>Estado auditoría:</strong> ${c.audit_status || "pending"}</div>
+            </div>
+            <p style="margin-top:10px;"><strong>Resumen:</strong> ${data.executive_summary || "-"}</p>
+            <p style="font-size:0.8rem;color:var(--text-muted);margin-top:6px;">${data.note || ""}</p>
+        </div></div>
+
+        <div class="grid-2">
+            <div class="card"><div class="card-header"><h2>Historial del Dueño</h2></div><div class="card-body table-wrap"><table><thead><tr><th>Siniestro</th><th>Cobertura</th><th>Fecha</th><th>Monto</th><th>Riesgo</th></tr></thead><tbody>${ownerRows || "<tr><td colspan='5'>Sin historial</td></tr>"}</tbody></table></div></div>
+            <div class="card"><div class="card-header"><h2>Historial del Vehículo</h2></div><div class="card-body table-wrap"><table><thead><tr><th>Siniestro</th><th>Cobertura</th><th>Fecha</th><th>Monto</th><th>Riesgo</th></tr></thead><tbody>${vehicleRows || "<tr><td colspan='5'>Sin historial</td></tr>"}</tbody></table></div></div>
+        </div>
+    `;
+}
+
+export function closeSummaryModal() {
+    const modal = document.getElementById("summary-modal");
+    if (modal) modal.style.display = "none";
+    _currentSummaryClaimId = null;
 }

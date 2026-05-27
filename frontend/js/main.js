@@ -14,6 +14,7 @@ import {
 import {
     loadSiniestros, toggleClaimPreview,
     openNotifyModal, closeNotifyModal, saveNotifyConfig,
+    openSummaryModal, closeSummaryModal,
 } from "./pages/siniestros.js";
 import {
     loadUploadPage, genRandomFactura, clearGeneratedFacturas,
@@ -61,6 +62,7 @@ Object.assign(window, {
     toggleTarifCat, toggleAllTarif, editTariff, cancelTariff, saveTariff,
     toggleClaimPreview,
     openNotifyModal, closeNotifyModal, saveNotifyConfig,
+    openSummaryModal, closeSummaryModal,
     genRandomFactura, clearGeneratedFacturas, setUploadIsTest,
     handleUploadFile, auditTestPdfDirect,
     triggerJitAudit, triggerRulesAudit,

@@ -1,323 +1,159 @@
-# Auditor Agéntico de Facturación de Siniestros
+# 🛡️ Aseguradora del Sur — Prototipo Antifraude Agéntico
 
-Sistema agéntico que audita automáticamente facturas de talleres enviadas a aseguradoras. Cruza ítems facturados contra el siniestro declarado y el tarifario maestro, detectando sobrecobros, duplicados, incoherencias y patrones de fraude antes de la revisión humana.
-
-**Doble motor**: motor de reglas determinístico (rápido, ~1s) + motor IA Gemini (opcional, 15-30s). Re-auditar el mismo invoice **reemplaza** el resultado existente — un único `AuditResult` por factura, sin duplicación.
+Sistema agéntico híbrido diseñado para la detección de posibles fraudes en siniestros, asignación de score de riesgo mediante semáforos, auditoría técnica de facturas y asistencia interactiva mediante IA para la Unidad Antifraude de Aseguradora del Sur.
 
 ---
 
-## Arquitectura
-
-```
-reto-Hackiaton/
-├── backend/
-│   ├── main.py                     # API FastAPI (entrypoint)
-│   ├── agent.py                    # Agente Auditor (motor reglas)
-│   ├── gemini_auditor.py           # Auditor IA — Gemini 2.5 Flash (CoT, few-shot)
-│   ├── rules_engine.py             # Motor de reglas determinístico
-│   ├── pdf_extractor.py            # Extractor de facturas desde PDF (pdfplumber)
-│   ├── pdf_generator.py            # Generador de PDFs de auditoría (interno + taller)
-│   ├── test_invoice_generator.py   # Generador de PDFs de FACTURAS DE PRUEBA (formato SRI)
-│   ├── models.py                   # Modelos SQLAlchemy (con UniqueConstraint + is_test flag)
-│   ├── database.py                 # Configuración SQLite + migración liviana de columnas
-│   ├── seed_data.py                # Datos demo con anomalías plantadas
-│   └── requirements.txt
-├── frontend/
-│   ├── index.html                  # SPA shell (script type="module")
-│   ├── style.css                   # Design system (Premium dark theme)
-│   └── js/                         # ★ Frontend modular ES Modules (sin build step)
-│       ├── main.js                 # Entry: expone fns a window para inline onclick
-│       ├── api.js                  # Cliente HTTP
-│       ├── state.js                # Estado mutable compartido
-│       ├── utils.js                # Toast, badges, animaciones
-│       ├── router.js               # SPA routing por hash
-│       ├── components/
-│       │   └── charts.js           # SVG donut + scatter
-│       └── pages/
-│           └── ...                 # Vistas de la aplicación
-├── docs/
-│   ├── facturas_muestra/           # PDFs de ejemplo generados
-│   ├── MANUAL_USO.md               # ★ Manual de uso paso a paso (usuario final)
-│   └── DOC_FUNCIONES.md            # Manual de funciones
-├── .dev_tools/                     # Scripts y utilidades de desarrollo
-├── landing.html                    # Página de presentación para el Hackathon
-└── README.md
-```
+## 1. Resumen Ejecutivo
+Este prototipo presenta una solución integral para mitigar el fraude en reclamaciones de seguros. Combina un **Motor de Reglas Determinísticas** (para validación de pólizas, deducibles, vigencias y facturas), un **Motor de Scoring de Fraude** (que evalúa 14 señales ponderadas y 7 reglas de negocio críticas) y un **Agente Conversacional Híbrido** (DeepSeek / Gemini) para auditoría interactiva de casos. La interfaz web responsive integra animaciones fluidas y widgets colapsables para ofrecer una experiencia premium y optimizada.
 
 ---
 
-## Stack Tecnológico
+## 2. Planteamiento del Problema
+Las aseguradoras enfrentan pérdidas millonarias debido a reclamaciones fraudulentas, que van desde inconsistencias documentales leves hasta patrones complejos como:
+- Siniestros reportados inmediatamente después de contratar la póliza o antes de vencerse (borde de vigencia).
+- Frecuencias atípicas de reclamos por parte del mismo asegurado, conductor o vehículo.
+- Sobrecobros de talleres mecánicos y facturación de repuestos no relacionados con el siniestro.
+- Clonación de descripciones físicas del incidente (narrativas coincidentes).
 
-| Componente       | Tecnología                                     |
-|------------------|------------------------------------------------|
-| Backend          | Python 3.10+ / FastAPI                         |
-| Base de Datos    | SQLite (vía SQLAlchemy)                        |
-| Frontend         | HTML + CSS + JavaScript (ES Modules nativos)   |
-| Motor reglas     | rules_engine determinístico (1-2s)             |
-| Motor IA         | **Gemini 2.5 Flash** (Google AI, opcional)     |
-| Extracción PDF   | pdfplumber                                     |
-| Generación PDF   | reportlab                                      |
+El análisis manual de estos factores es lento, costoso y propenso a errores, lo que justifica una automatización agéntica explicable que actúe como alerta temprana para los revisores humanos.
 
 ---
 
-## Instalación y Ejecución
+## 3. Objetivos
+- **Automatizar el filtrado**: Procesar el 100% de las facturas y siniestros de forma instantánea.
+- **Calcular Score de Riesgo**: Ponderar 14 señales de fraude para clasificar casos en un semáforo (Verde, Amarillo, Rojo).
+- **Garantizar Explicabilidad**: Acompañar cada alerta con una justificación clara basada en datos facturales y narrativas detalladas.
+- **Asistir en Lenguaje Natural**: Proveer un chatbot cognitivo capaz de responder consultas complejas sobre la base de datos de siniestros.
 
-### 1. (Opcional) Configurar API Key de Google AI
+---
 
-Solo si quieres usar el motor IA Gemini. El sistema funciona sin ella usando el motor de reglas.
+## 4. Alcance
+El alcance de este prototipo abarca:
+1. Ingestión y estructuración de pólizas, vehículos, asegurados, documentos y siniestros.
+2. Cálculo determinístico de las 14 señales de la rúbrica y las 7 reglas críticas (RF01-RF07).
+3. Auditoría automatizada de facturas (SRI) extrayendo texto de PDFs y contrastándolo con el tarifario homologado.
+4. Asistencia por chat usando modelos de lenguaje (DeepSeek y Gemini 2.5 Flash).
+5. Interfaz de usuario SPA con cola de auditoría y chat interactivo colapsables con animaciones de transiciones.
 
-Crear archivo `.env` en la raíz del repo:
+---
 
-```
-GOOGLE_API_KEY=tu_api_key_aqui
-```
+## 5. Arquitectura y Stack Tecnológico
+La arquitectura detallada y el flujo se describen en [docs/arquitectura.md](docs/arquitectura.md).
 
-Obtener key gratis en: https://aistudio.google.com/app/apikey
+- **Backend**: Python 3.10+ / FastAPI.
+- **Base de Datos**: SQLite con SQLAlchemy.
+- **Modelado de Datos**: 8 tablas normalizadas (ver [docs/modelo_datos.md](docs/modelo_datos.md)).
+- **Motores de IA**: DeepSeek Chat API y Google Gemini 2.5 Flash.
+- **Frontend**: HTML5 / CSS Vanilla / JavaScript Modular (sin paso de compilación).
+- **Procesamiento de Archivos**: pdfplumber (OCR/Extracción Facturas SRI) y reportlab (Generador de Informes PDF).
 
-### 2. Backend
+---
 
+## 6. Modelo de Datos
+El sistema utiliza una base de datos SQLite relacional. Las tablas clave son:
+- `siniestros`: Almacena el siniestro, el score calculado, clasificación y el JSON de alertas.
+- `polizas`: Almacena vigencias, prima, suma asegurada y deducible.
+- `asegurados_sinteticos`: Almacena historial de mora y frecuencia de reclamos del asegurado.
+- `vehiculos`: Detalles físicos del vehículo (placa, chasis, marca, modelo).
+- `documentos`: Estado de entrega y legibilidad de documentos requeridos (Cédula, Licencia, Denuncia, Presupuesto).
+- `invoices` y `invoice_items`: Datos extraídos de facturas del taller para auditoría de tarifas.
+
+*La documentación detallada se encuentra en [docs/modelo_datos.md](docs/modelo_datos.md).*
+
+---
+
+## 7. Señales de Posible Fraude
+Se evalúan 14 señales de fraude ponderadas que suman un máximo de 98 puntos:
+1. Reclamo cercano a borde de vigencia (S01 - hasta 8 pts)
+2. Demora reporte robo (S02 - hasta 8 pts)
+3. Alta frecuencia asegurado (S03 - hasta 8 pts)
+4. Alta frecuencia vehículo (S04 - hasta 6 pts)
+5. Frecuencia conductor (S05 - hasta 8 pts)
+6. Frecuencia solo Responsabilidad Civil (S06 - hasta 6 pts)
+7. Beneficiario recurrente cruzado (S07 - hasta 10 pts)
+8. Documentación incompleta/ilegible (S08 - hasta 4 pts)
+9. Dinámica sospechosa / nocturna (S09 - hasta 6 pts)
+10. Evento sin tercero involucrado (S10 - hasta 6 pts)
+11. Documentos con inconsistencias de fecha/enmienda (S11 - hasta 10 pts)
+12. Reporte tardío extremo (S12 - hasta 5 pts)
+13. Similitud de narrativas entre siniestros (S13 - hasta 8 pts)
+14. Monto reclamado cercano a la suma asegurada (S14 - hasta 5 pts)
+
+*La justificación detallada y algoritmo se encuentra en [docs/reglas_negocio.md](docs/reglas_negocio.md).*
+
+---
+
+## 8. Score de Riesgo (Semáforo)
+El puntaje obtenido de las 14 señales se normaliza a una escala de 0-100 y clasifica los siniestros:
+- **🟢 Verde (0 - 40)**: Riesgo Bajo. Continuar flujo normal.
+- **🟡 Amarillo (41 - 75)**: Riesgo Medio. Escalar a Unidad Antifraude para revisión documental.
+- **🔴 Rojo (76 - 100)**: Riesgo Alto. Escalar a Unidad Antifraude para inspección física especializada.
+
+*Nota: El fallo de las reglas críticas RF01 (inconsistencia de ramo) o RF02 (siniestro fuera de vigencia de póliza) fuerza una clasificación automática en Rojo (Score 85+) por motivos de cobertura.*
+
+---
+
+## 9. Uso de Inteligencia Artificial (IA)
+- **DeepSeek (Chatbot principal)**: Empleado para reescribir y estructurar en lenguaje natural formal las respuestas a las consultas del chatbot conversacional.
+- **Gemini 2.5 Flash (Auditor e IA Fallback)**: Utilizado para auditar facturas complejas de talleres mediante técnicas de Chain-of-Thought y Self-Reflection, y como fallback del chatbot si la API de DeepSeek está inactiva.
+- **Similitud semántica local**: Lógica NLP local para comparar narrativas duplicadas sin costo de tokens ni latencia innecesaria.
+
+*La documentación sobre la integración se encuentra en [docs/uso_ia.md](docs/uso_ia.md).*
+
+---
+
+## 10. Instalación y Ejecución
+
+### 1. Variables de Entorno
+Crea un archivo `.env` en la raíz del proyecto basándote en el archivo `.env.example`:
 ```bash
-pip install -r backend/requirements.txt
+GOOGLE_API_KEY=tu_api_key_de_google_aqui
+DEEPSEEK_API_KEY=tu_api_key_de_deepseek_aqui
+```
+
+### 2. Instalación de Dependencias
+Instala los paquetes de Python desde el archivo `requirements.txt` en la raíz:
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Inicialización y Ejecución del Servidor
+Ejecuta el servidor FastAPI con uvicorn:
+```bash
 python -m uvicorn backend.main:app --reload --port 8000
 ```
+La aplicación se inicializa automáticamente y crea la base de datos SQLite poblada con los ~60 siniestros sintéticos.
 
-### 3. Frontend
-
-Abrir en navegador: `http://localhost:8000/app/`
-
-**Inicio rápido**: doble-click `start.bat` (Windows) o `bash start.sh` (Mac/Linux).
-
-> 📖 **Manual de uso paso a paso para usuarios:** [`docs/MANUAL_USO.md`](docs/MANUAL_USO.md)
-
----
-
-## Páginas de la App Web
-
-| Ruta                | Descripción                                                                |
-|---------------------|----------------------------------------------------------------------------|
-| `#dashboard`        | KPIs + scatter de siniestros + donut hallazgos + toggle TEST              |
-| `#auditorias`       | Tabs Pendientes/Revisadas con búsqueda + filtro TEST + badge motor (REGLAS/IA) |
-| `#tarifario`        | Categorías colapsables + **botón Añadir Tarifario Manual** + Eliminar     |
-| `#siniestros`       | Tabla expandible — preview de facturas asociadas inline                    |
-| `#upload`           | Drag-drop PDF + checkbox TEST + generador random formato SRI               |
-| `#pending/{id}`     | Selector de motor: ⚡ Reglas (rápido) o 🤖 IA Gemini (lento)               |
-| `#audit/{id}`       | Detalle + **botones Re-auditar Reglas / Re-auditar IA** (reemplaza, no duplica) |
-
----
-
-## Doble Motor de Auditoría — Sin Duplicación
-
-**Garantía**: existe **un único `AuditResult` por `invoice_id`**. Re-auditar la misma factura con cualquier motor:
-
-1. Encuentra el `AuditResult` existente.
-2. Reemplaza `status`, `risk_score`, `total_overcharge`, `summary`.
-3. Actualiza `audit_engine` al motor recién usado (`rules` o `gemini`).
-4. **Borra todos los `AuditFinding` previos** y reinserta los nuevos.
-
-Ningún flujo crea un segundo `AuditResult` para el mismo invoice. La columna `audit_engine` siempre refleja el último motor empleado, visible como badge en `#auditorias` y en el header de `#audit/{id}`.
-
-### Cuándo usar cada motor
-
-| Motor       | Cuándo                                              | Latencia | Hallazgos                                      |
-|-------------|-----------------------------------------------------|----------|------------------------------------------------|
-| Reglas (⚡) | Default. Producción, batch, validación rápida       | 1-2 s    | Sobrecobro, Duplicado, Cantidad, Incoherencia, Re-Facturación |
-| IA Gemini   | Casos ambiguos, análisis cualitativo, justificación | 15-30 s  | Lo anterior + razonamiento textual + patrones cruzados |
-
----
-
-## Generar PDFs de Prueba y Drag-Drop
-
-La página **Subir PDF** (`#upload`) tiene dos paneles + un checkbox TEST.
-
-### Checkbox "Marcar como factura de prueba (TEST)"
-
-Default ON al subir desde el generador random. Las facturas TEST:
-- **Sí entran a la DB** y son auditadas con el mismo flujo (no se duplican).
-- **No cuentan en el dashboard real** (se filtran via `?include_test=0`).
-- Visible con badge gris **TEST** en listas y detalle.
-- Toggle "Incluir TEST" en dashboard y auditorías para ver/ocultar.
-
-### Panel izquierdo — Drag-drop
-
-1. (Opcional) Selecciona un siniestro asociado.
-2. Marca/desmarca TEST según corresponda.
-3. Arrastra un PDF o click para elegir.
-4. El sistema extrae datos con `pdf_extractor.py` y queda **pendiente** de auditoría.
-5. Ve a `#auditorias` → tab Pendientes → "Auditar ahora" → elige motor.
-
-Restricciones: solo `.pdf`, máximo 10 MB. **Race condition prevenida**: doble-click al subir está guardado por flag interno, y la DB tiene `UniqueConstraint(invoice_number, workshop_id)`.
-
-### Panel derecho — Generador Random (formato SRI Ecuador)
-
-Cada click genera una factura PDF aleatoria y única con formato SRI:
-RUC random 13-dígitos, número factura `eee-ppp-sssssssss`, clave de acceso 49-dígitos
-con módulo 11, fecha aleatoria últimos 25 días, items random según tipo de siniestro.
-
-| Botón          | Escenario                                                | Hallazgo esperado                       |
-|----------------|----------------------------------------------------------|------------------------------------------|
-| + Limpia       | Items dentro de tarifario, siniestro coherente           | **Aprobado** — sin hallazgos             |
-| + Sobrecobro   | Un ítem aleatorio +30-65% sobre tarifario                | **WARNING/CRITICAL** — sobrecobro        |
-| + Fraude       | Ítem duplicado + ítem incoherente con el siniestro       | **CRITICAL** — duplicado + incoherencia  |
-| + Aleatorio    | Mezcla aleatoria entre los 3 anteriores                  | Variable                                 |
-
-**Acciones por card:** Descargar PDF + **Auditar directo** (lo inyecta al drag-drop con TEST=on).
-
-### Generación vía CLI / API
-
+### 4. Ejecución de Pruebas Unitarias
+Para correr la suite de pruebas del motor de reglas:
 ```bash
-python -m backend.test_invoice_generator
-# Genera los 3 escenarios canónicos en backend/test_pdfs/
-
-# Una factura random por escenario
-curl -X POST "http://localhost:8000/api/test-pdfs/random?scenario=fraude&count=1"
-
-# Batch de 5 mixed
-curl -X POST "http://localhost:8000/api/test-pdfs/random?scenario=mixed&count=5"
+python -m unittest tests/test_fraud_rules.py
 ```
 
----
-
-## Reglas de Auditoría (motor determinístico)
-
-| Regla              | Descripción                                              | Severidad         |
-|--------------------|----------------------------------------------------------|-------------------|
-| Sobrecobro         | Precio unitario excede tarifario + tolerancia            | WARNING / CRITICAL |
-| Duplicado          | Mismo ítem facturado más de una vez                      | CRITICAL          |
-| Cantidad Anómala   | Cantidades fuera del rango esperado                      | WARNING / INFO    |
-| Incoherencia       | Ítems no corresponden al tipo de siniestro               | CRITICAL          |
-| Re-Facturación     | Mismo invoice_number en histórico con siniestro distinto | CRITICAL          |
-
-Calibración severidad: `exceso ≤ tolerancia → INFO`, `tolerancia < exceso ≤ 30% → WARNING`, `exceso > 30% → CRITICAL`.
-
-Risk score: `CRITICAL × 35 + WARNING × 20 + INFO × 5`, cap a 100.
+### 5. Acceso al Frontend
+Abre en tu navegador la dirección: `http://localhost:8000/app/`
 
 ---
 
-## Tarifarios Manuales
-
-Desde `#tarifario` → botón **"+ Añadir Tarifario Manual"**:
-
-- Form con: código, descripción, categoría (repuesto/pintura/material/mano_obra/servicio), precio máx, tolerancia %, cant. min/max, **checkboxes de siniestros aplicables** (8 tipos).
-- Validación: código único (DB rechaza duplicados con HTTP 409).
-- **Eliminar** desde cada fila de tarifario.
-
-Endpoints: `POST /api/tariffs`, `PUT /api/tariffs/{id}`, `DELETE /api/tariffs/{id}`.
+## 11. Demo y Casos de Uso
+1. **Visualizar el Dashboard**: Revisa el semáforo y las métricas financieras de siniestros.
+2. **Consultar al Asistente Antifraude**: Abre la burbuja de chat (esquina inferior derecha) y haz clic en alguna pregunta predefinida (FAQ) o formula tus propias preguntas como:
+   - *¿Qué asegurados tienen mayor frecuencia de reclamos?*
+   - *¿Por qué el siniestro SIN-6 fue marcado con alto riesgo?*
+3. **Revisar Siniestros y Documentos**: Navega a la pestaña de "Siniestros" para ver el detalle de póliza, vehículos y documentos de cada caso.
+4. **Ver Cola de Auditoría**: Despliega el panel colapsable flotante de pendientes (esquina inferior izquierda) para inspeccionar facturas sin auditar o inicia auditorías de prueba en la sección "Subir PDF".
 
 ---
 
-## PDFs Generados por el Sistema
-
-Dos modos (configurable vía `?type=`):
-
-| Modo        | Audiencia | Contenido                                                          |
-|-------------|-----------|--------------------------------------------------------------------|
-| `internal`  | Auditor   | Risk score color-codeado, severidad por hallazgo, items con flags ⚠ |
-| `workshop`  | Taller    | Profesional, sin risk score, ajustes requeridos + mensaje fijo     |
-
-Ambos PDFs usan **plantillas predeterminadas** en `pdf_generator.py`. El texto del taller usa el `resumen_ejecutivo_taller` si existe; si no, mensaje genérico fijo. Esto evita depender de Gemini para el texto narrativo y mantiene los reportes consistentes.
-
-Endpoint: `GET /api/audit-results/{id}/report-preview?type=internal|workshop`
+## 12. Seguridad, Privacidad y Ética
+- **Protección de Datos**: Todos los nombres de clientes, RUCs, placas de vehículos y montos son 100% sintéticos y generados aleatoriamente, cumpliendo con la Ley Orgánica de Protección de Datos Personales (LOPDP).
+- **Revisión Humana Obligatoria**: La IA actúa únicamente como una herramienta de apoyo que sugiere alertas y calcula desviaciones. Todas las decisiones de aprobación, rechazo o escalamiento quedan reservadas al analista humano.
 
 ---
 
-## API Endpoints
+## 13. Limitaciones y Próximos Pasos
+- **NLP Avanzado**: El análisis de narrativas actual se basa en correspondencia de strings. Se planea migrar a modelos de Embeddings locales (ej. SentenceTransformers) para detectar similitudes semánticas más abstractas.
+- **OCR de Imágenes**: Actualmente el sistema procesa facturas estructuradas en PDF. El siguiente paso es integrar un motor de OCR para digitalizar imágenes de facturas arrugadas o fotos tomadas desde smartphones.
 
-### Dashboard
-
-| Método | Endpoint                                          | Descripción                         |
-|--------|---------------------------------------------------|-------------------------------------|
-| GET    | `/api/dashboard?include_test=0\|1`               | KPIs (filtra TEST por defecto)      |
-| GET    | `/api/dashboard/claims-by-day?days=N`             | Serie diaria scatter                |
-
-### Auditoría
-
-| Método | Endpoint                                          | Motor    | Descripción                              |
-|--------|---------------------------------------------------|----------|------------------------------------------|
-| POST   | `/api/audit-rules/{invoice_id}`                   | reglas   | **★ Auditoría rápida (~1-2s)**           |
-| POST   | `/api/audit/{invoice_id}`                         | reglas   | Alias del anterior                       |
-| POST   | `/api/audit-all`                                  | reglas   | Auditar todas con reglas                 |
-| POST   | `/api/audit-ai/{invoice_id}`                      | gemini   | Auditar 1 factura con Gemini             |
-| POST   | `/api/audit-ai-all`                               | gemini   | Auditar todas con Gemini                 |
-| POST   | `/api/audit-gemini-batch`                         | gemini   | Batch con análisis de patrones cruzados  |
-| POST   | `/api/audit-pdf`                                  | -        | Subir PDF (Form: file, claim_number, is_test) |
-| GET    | `/api/audit-results?include_test=0\|1`           | -        | Listar resultados                        |
-| GET    | `/api/audit-results/{id}`                         | -        | Detalle                                  |
-| GET    | `/api/audit-results/{id}/report-preview?type=...` | -        | Preview PDF                              |
-| POST   | `/api/audit-results/{id}/notify`                  | -        | Notificación + simular email             |
-| POST   | `/api/audit-results/{id}/{approve\|reject\|escalate}` | -    | Acción manual                            |
-
-### Catálogos
-
-| Método | Endpoint                              | Descripción                       |
-|--------|---------------------------------------|-----------------------------------|
-| GET    | `/api/tariffs`                        | Listar tarifario                  |
-| **POST** | **`/api/tariffs`**                  | **Crear tarifario manual**        |
-| PUT    | `/api/tariffs/{id}`                   | Modificar precio máximo           |
-| **DELETE** | **`/api/tariffs/{id}`**           | **Eliminar tarifario**            |
-| GET    | `/api/claims`                         | Siniestros                        |
-| GET    | `/api/claims/{id}/invoices`           | Facturas preliminares             |
-| GET    | `/api/invoices/pending?include_test=0\|1` | Facturas sin auditoría        |
-
-### PDFs de Prueba
-
-| Método | Endpoint                                                | Descripción                                       |
-|--------|---------------------------------------------------------|---------------------------------------------------|
-| GET    | `/api/test-pdfs`                                        | Lista escenarios disponibles                      |
-| POST   | `/api/test-pdfs/generate`                               | (Re)generar los 3 PDFs canónicos                  |
-| POST   | `/api/test-pdfs/random?scenario=X&count=N`              | Generar N facturas random                         |
-| GET    | `/api/test-pdfs/{filename}`                             | Descargar PDF                                     |
-
----
-
-## Modelo de Datos
-
-### Tablas (SQLAlchemy)
-
-- `workshops` — talleres (RUC unique).
-- `claims` — siniestros (claim_number unique).
-- `invoices` — facturas. **`UniqueConstraint(invoice_number, workshop_id)` previene duplicados.** Columna `is_test` flag.
-- `invoice_items` — ítems (cascade delete).
-- `tariff_items` — tarifario maestro (code unique).
-- `audit_results` — **un único registro por invoice_id**. Columnas: `audit_engine` (rules|gemini), `is_test`, status, risk_score, total_overcharge, summary, agent_notes, audited_at.
-- `audit_findings` — hallazgos (cascade delete con audit_result).
-
-### Migración liviana
-
-`init_db()` ejecuta `Base.metadata.create_all` + `_migrate_columns()` que añade `is_test` y `audit_engine` si faltan en DBs existentes (idempotente).
-
----
-
-## Patrones SOTA del Auditor IA (Gemini)
-
-Implementados en `backend/gemini_auditor.py`:
-
-1. **Chain-of-Thought forzado** — schema con orden de campos: razonamiento ANTES de veredicto.
-2. **Few-shot calibration** — 2 ejemplos worked en system prompt (limpio + fraude).
-3. **Citación de evidencia** — cada hallazgo requiere `evidencia_citada` literal del input.
-4. **Confianza calibrada** — score 0.0-1.0 por hallazgo. CRITICAL requiere ≥ 0.7.
-5. **Self-reflection** — opcional (`enable_self_reflection=False` por default para velocidad).
-6. **Validación semántica + retry** — coherencia status ↔ severidad. 1 retry con feedback.
-7. **Mock mode** — si falta `GOOGLE_API_KEY`, devuelve respuesta de prueba sin llamar al API.
-
----
-
-## Escenarios Demo (Seed)
-
-| # | Siniestro          | Taller        | Anomalía                           | Severidad  |
-|---|--------------------|---------------|-------------------------------------|------------|
-| 1 | Choque frontal     | AutoFix S.A.  | Limpio                             | -          |
-| 2 | Robo accesorios    | TallerPro     | Sobrecobro mano obra +35%          | WARNING    |
-| 3 | Daño granizo       | CarGlass      | Cobro duplicado parabrisas         | CRITICAL   |
-| 4 | Choque lateral     | AutoFix S.A.  | Repuesto motor en siniestro puerta | CRITICAL   |
-| 5 | Rayón pintura      | TallerPro     | Cantidad excesiva pintura (5 gal)  | WARNING    |
-
----
-
-## Cambios recientes
-
-- ★ **Doble motor con un único resultado**: rules + gemini upsert garantizado, no hay duplicación de `AuditResult`. Botones "Re-auditar Reglas" y "Re-auditar IA" en `#audit/{id}` reemplazan el resultado existente.
-- ★ **Frontend modular** ES Modules en `frontend/js/` (sin build step).
-- ★ **Tarifarios manuales**: POST/DELETE + UI con form completo (code, desc, cat, precio, tol, qty, claim_types).
-- ★ **Flag TEST**: facturas de prueba en DB pero filtrables del dashboard real.
-- ★ **Anti-duplicado**: `UniqueConstraint` + `IntegrityError` handling + frontend in-flight guard.
-- ★ **Velocidad**: rules-engine como motor default (~1s). Gemini opcional con self-reflection desactivada.
+*La documentación sobre fronteras de error se encuentra en [docs/limitaciones.md](docs/limitaciones.md).*

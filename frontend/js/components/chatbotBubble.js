@@ -28,11 +28,11 @@ export function initChatbotBubble() {
 
     root.innerHTML = `
         <button id="chatbot-toggle" class="chatbot-toggle" aria-label="Abrir chat" title="Asistente Miraclex IA">
-            <img src="/logo/logo.svg" onerror="this.onerror=null;this.src='/logo/logo.png'" alt="Miraclex" width="34" height="34">
+            <img class="chatbot-logo-btn" src="/logo/logo.svg" onerror="this.onerror=null;this.src='/logo/logo.png'" alt="Miraclex" width="36" height="36">
         </button>
         <div id="chatbot-panel" class="chatbot-panel" style="display:none;">
-            <div class="chatbot-head" style="display:flex;align-items:center;gap:8px;">
-                <img src="/logo/logo.svg" onerror="this.onerror=null;this.src='/logo/logo.png'" alt="Miraclex" width="22" height="22" style="border-radius:6px;">
+            <div class="chatbot-head" style="display:flex;align-items:center;gap:10px;">
+                <img class="chatbot-logo-head" src="/logo/logo.svg" onerror="this.onerror=null;this.src='/logo/logo.png'" alt="Miraclex" width="28" height="28" style="border-radius:6px;">
                 <span>Asistente Miraclex IA</span>
             </div>
             <div class="chatbot-faqs" id="chatbot-faqs"></div>

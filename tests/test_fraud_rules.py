@@ -116,6 +116,7 @@ class TestFraudRules(unittest.TestCase):
             descripcion="Choque menor a los 5 días de iniciar"
         )
         self.db.add(siniestro)
+        self.db.flush() # Populate id_siniestro
         
         # Añadir documentos básicos requeridos para que no fallen otras reglas
         for doc_type in ["Cédula", "Licencia", "Denuncia", "Presupuesto"]:
