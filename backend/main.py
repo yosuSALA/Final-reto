@@ -21,16 +21,20 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from backend.database import get_db, init_db, DEFAULT_PROFILE_ID
+from backend.database import get_db, init_db, DEFAULT_PROFILE_ID, SessionLocal
 from backend.seed_data import seed_database
 from backend.agent import AuditAgent
-from backend.auth import verify_profile_token, generate_profile_token, new_token_secret
+from backend.auth import (
+    verify_profile_token, generate_profile_token, new_token_secret,
+    verify_password, set_profile_password, is_admin_profile,
+    ADMIN_PROFILE_ID,
+)
 from backend.profile_scope import ProfileScope
 from backend.models import (
     Profile, Siniestro, Invoice, InvoiceItem, TariffItem,
     AuditResult, AuditFinding, Workshop, AuditStatus,
     FindingSeverity, FindingType, Ramo, Cobertura, EstadoSiniestro,
-    Poliza, AseguradoSintetico, Vehiculo, Documento,
+    Poliza, AseguradoSintetico, Vehiculo, Documento, AuditLog,
 )
 
 app = FastAPI(title="Auditor Agentico de Siniestros", version="2.0.0")
@@ -59,6 +63,110 @@ class NoCacheDevMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(NoCacheDevMiddleware)
+
+
+# ── Middleware de auditoría de acciones ───────────────────────────────────────
+# Registra en `audit_log` las escrituras (POST/PUT/PATCH/DELETE) hechas a /api/*
+# por cualquier perfil autenticado. Los eventos de login/logout se loguean
+# directamente desde los endpoints de perfil para incluir contexto adicional.
+
+_AUDIT_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+def _audit_skip_path(path: str) -> bool:
+    # Endpoints de perfiles/sesión hacen logging explícito (login, create, delete,
+    # password_changed). Skipearlos en el middleware evita entradas duplicadas.
+    if path == "/api/profiles" or path.startswith("/api/profiles/"):
+        return True
+    return False
+
+
+class AuditLogMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        try:
+            method = request.method.upper()
+            path = request.url.path
+            if method in _AUDIT_METHODS and path.startswith("/api/") and not _audit_skip_path(path):
+                token = request.headers.get("X-Profile-Token", "")
+                profile_id = None
+                profile_name = None
+                role = None
+                actor_admin = 0
+                if token and ":" in token:
+                    profile_id = token.split(":", 1)[0]
+                    db = SessionLocal()
+                    try:
+                        p = db.query(Profile).filter(Profile.id == profile_id).first()
+                        if p:
+                            profile_name = p.display_name or p.name
+                            role = p.role or ""
+                            actor_admin = 1 if (role or "").lower() == "admin" else 0
+                    finally:
+                        db.close()
+                db = SessionLocal()
+                try:
+                    entry = AuditLog(
+                        profile_id=profile_id,
+                        profile_name=profile_name,
+                        role=role,
+                        action="http_write",
+                        method=method,
+                        path=path[:300],
+                        status_code=int(response.status_code) if response.status_code else None,
+                        actor_admin=actor_admin,
+                        ip=(request.client.host if request.client else None),
+                    )
+                    db.add(entry)
+                    db.commit()
+                finally:
+                    db.close()
+        except Exception:
+            # El logging nunca debe romper la respuesta
+            pass
+        return response
+
+
+app.add_middleware(AuditLogMiddleware)
+
+
+def _record_audit_event(
+    action: str,
+    profile_id: str | None = None,
+    profile_name: str | None = None,
+    role: str | None = None,
+    status_code: int | None = None,
+    detail: str | None = None,
+    actor_admin: int = 0,
+    method: str | None = None,
+    path: str | None = None,
+    ip: str | None = None,
+) -> None:
+    """Inserta una entrada de audit_log sin propagar errores."""
+    db = SessionLocal()
+    try:
+        entry = AuditLog(
+            profile_id=profile_id,
+            profile_name=profile_name,
+            role=role,
+            action=action,
+            method=method,
+            path=path[:300] if path else None,
+            status_code=status_code,
+            detail=detail,
+            actor_admin=actor_admin,
+            ip=ip,
+        )
+        db.add(entry)
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+    finally:
+        db.close()
+
 
 frontend_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
 if os.path.exists(frontend_path):
@@ -119,46 +227,89 @@ def get_scope(
 
 # ── Endpoints de perfiles (sin autenticación) ──────────
 
+VALID_ROLES = {
+    "demo_jurado", "analista", "antifraude", "jefatura", "auditoria",
+    "operaciones", "costos", "contabilidad", "legal",
+}
+
+
 class ProfileCreate(BaseModel):
     name: str
     display_name: str = ""
     role: str = "analista"
+    password: str = ""
 
 
 class ProfileUpdate(BaseModel):
     display_name: str
 
 
+class ProfileLogin(BaseModel):
+    password: str = ""
+
+
+class AdminLogin(BaseModel):
+    password: str
+
+
+class PasswordChange(BaseModel):
+    new_password: str
+    current_password: str = ""
+
+
+def _admin_from_token(token: str | None, db: Session):
+    """Si el token corresponde a un perfil admin activo, retorna ese perfil."""
+    if not token:
+        return None
+    p = verify_profile_token(token, db)
+    if p and is_admin_profile(p):
+        return p
+    return None
+
+
+def _profile_summary(p: Profile) -> dict:
+    return {
+        "id": p.id,
+        "name": p.name,
+        "display_name": p.display_name or p.name,
+        "role": p.role or "analista",
+        "is_admin": is_admin_profile(p),
+        "has_password": bool(p.password_hash),
+        "created_at": p.created_at.isoformat() if p.created_at else None,
+    }
+
+
 @app.get("/api/profiles")
 def list_profiles(db: Session = Depends(get_db)):
     """Lista todos los perfiles activos. No requiere token."""
     profiles = db.query(Profile).filter(Profile.is_active == 1).order_by(Profile.created_at).all()
-    return [
-        {
-            "id": p.id,
-            "name": p.name,
-            "display_name": p.display_name or p.name,
-            "role": p.role or "analista",
-            "created_at": p.created_at.isoformat() if p.created_at else None,
-        }
-        for p in profiles
-    ]
+    return [_profile_summary(p) for p in profiles]
 
 
 @app.post("/api/profiles", status_code=201)
-def create_profile(data: ProfileCreate, db: Session = Depends(get_db)):
-    """Crea un perfil nuevo y retorna su token firmado."""
+def create_profile(
+    data: ProfileCreate,
+    db: Session = Depends(get_db),
+    x_profile_token: str = Header(None, alias="X-Profile-Token"),
+):
+    """Crea un perfil nuevo. Requiere clave para login (mínimo 4 caracteres)."""
     name = (data.name or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="El nombre del perfil es requerido.")
     if db.query(Profile).filter(Profile.name == name).first():
         raise HTTPException(status_code=409, detail=f"Ya existe un perfil con el nombre '{name}'.")
 
-    valid_roles = {
-        "demo_jurado", "analista", "antifraude", "jefatura", "auditoria",
-        "operaciones", "costos", "contabilidad", "legal",
-    }
-    role = data.role if data.role in valid_roles else "analista"
+    role = data.role if data.role in VALID_ROLES else "analista"
+    # Solo el admin puede crear otros admins
+    if data.role == "admin":
+        admin = _admin_from_token(x_profile_token, db)
+        if not admin:
+            raise HTTPException(status_code=403, detail="Solo el administrador puede crear otros perfiles 'admin'.")
+        role = "admin"
+
+    password = (data.password or "").strip()
+    if len(password) < 4:
+        raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 4 caracteres.")
 
     import uuid
     secret = new_token_secret()
@@ -170,39 +321,139 @@ def create_profile(data: ProfileCreate, db: Session = Depends(get_db)):
         token_secret=secret,
         is_active=1,
     )
+    set_profile_password(profile, password)
     db.add(profile)
     db.commit()
     db.refresh(profile)
     token = generate_profile_token(profile.id, secret)
+    _record_audit_event(
+        action="profile_created",
+        profile_id=profile.id,
+        profile_name=profile.display_name or profile.name,
+        role=role,
+        status_code=201,
+        method="POST",
+        path="/api/profiles",
+    )
     return {
-        "id": profile.id,
-        "name": profile.name,
-        "display_name": profile.display_name,
-        "role": profile.role or "analista",
+        **_profile_summary(profile),
         "token": token,
-        "created_at": profile.created_at.isoformat(),
     }
 
 
 @app.post("/api/profiles/{profile_id}/token")
-def get_profile_token(profile_id: str, db: Session = Depends(get_db)):
+def get_profile_token(
+    profile_id: str,
+    data: ProfileLogin | None = None,
+    db: Session = Depends(get_db),
+    x_profile_token: str = Header(None, alias="X-Profile-Token"),
+):
     """
-    Genera (o regenera) el token para un perfil existente.
-    Equivale al 'login': quien conoce el profile_id puede obtener su token.
-    Los UUIDs no son adivinables, lo que previene enumeración de perfiles.
+    Login con contraseña: emite el token HMAC de sesión.
+
+    - Caso normal: requiere body {"password": "..."} válido contra el hash del perfil.
+    - Modo admin: si el caller envía un X-Profile-Token de un perfil admin,
+      puede emitir tokens para otros perfiles sin contraseña (modo testing
+      según especificación de clave maestra).
     """
     profile = db.query(Profile).filter(
         Profile.id == profile_id, Profile.is_active == 1
     ).first()
     if not profile:
         raise HTTPException(status_code=404, detail="Perfil no encontrado.")
+
+    admin_caller = _admin_from_token(x_profile_token, db)
+    bypass_password = admin_caller is not None
+
+    if not bypass_password:
+        password = (data.password if data else "") or ""
+        if not profile.password_hash:
+            # Perfil sin clave configurada (legado migrado): exigir setup posterior.
+            # Se permite login con cadena vacía para no bloquear el primer ingreso.
+            ok = (password == "")
+        else:
+            ok = verify_password(password, profile.password_hash, profile.password_salt or "")
+        if not ok:
+            _record_audit_event(
+                action="login_failed",
+                profile_id=profile.id,
+                profile_name=profile.display_name or profile.name,
+                role=profile.role,
+                status_code=401,
+                method="POST",
+                path=f"/api/profiles/{profile_id}/token",
+                detail="Contraseña inválida",
+            )
+            raise HTTPException(status_code=401, detail="Contraseña inválida.")
+
+    if not profile.token_secret:
+        profile.token_secret = new_token_secret()
+        db.commit()
     token = generate_profile_token(profile.id, profile.token_secret)
+    _record_audit_event(
+        action=("login_via_admin" if bypass_password else "login"),
+        profile_id=profile.id,
+        profile_name=profile.display_name or profile.name,
+        role=profile.role,
+        status_code=200,
+        method="POST",
+        path=f"/api/profiles/{profile_id}/token",
+        actor_admin=1 if bypass_password else 0,
+        detail=(f"Emitido por admin {admin_caller.name}" if bypass_password else None),
+    )
     return {
         "token": token,
         "profile_id": profile.id,
         "name": profile.name,
         "display_name": profile.display_name or profile.name,
         "role": profile.role or "analista",
+        "is_admin": is_admin_profile(profile),
+        "via_admin": bypass_password,
+    }
+
+
+@app.post("/api/profiles/admin-login")
+def admin_login(data: AdminLogin, db: Session = Depends(get_db)):
+    """Login del perfil admin con la clave maestra. Devuelve token + lista de perfiles."""
+    admin = db.query(Profile).filter(
+        Profile.id == ADMIN_PROFILE_ID, Profile.is_active == 1
+    ).first()
+    if not admin:
+        raise HTTPException(status_code=500, detail="Perfil admin no inicializado.")
+    ok = verify_password(data.password or "", admin.password_hash or "", admin.password_salt or "")
+    if not ok:
+        _record_audit_event(
+            action="admin_login_failed",
+            profile_id=admin.id,
+            profile_name=admin.display_name or admin.name,
+            role="admin",
+            status_code=401,
+            method="POST",
+            path="/api/profiles/admin-login",
+        )
+        raise HTTPException(status_code=401, detail="Clave maestra inválida.")
+    if not admin.token_secret:
+        admin.token_secret = new_token_secret()
+        db.commit()
+    token = generate_profile_token(admin.id, admin.token_secret)
+    _record_audit_event(
+        action="admin_login",
+        profile_id=admin.id,
+        profile_name=admin.display_name or admin.name,
+        role="admin",
+        status_code=200,
+        method="POST",
+        path="/api/profiles/admin-login",
+        actor_admin=1,
+    )
+    return {
+        "token": token,
+        "profile_id": admin.id,
+        "name": admin.name,
+        "display_name": admin.display_name or admin.name,
+        "role": "admin",
+        "is_admin": True,
+        "via_admin": True,
     }
 
 
@@ -213,12 +464,55 @@ def update_profile(
     profile: Profile = Depends(get_profile),
     db: Session = Depends(get_db),
 ):
-    """Actualiza el display_name de un perfil. Solo puede actualizar el propio."""
-    if profile.id != profile_id:
+    """Actualiza el display_name de un perfil. El admin puede modificar cualquier perfil."""
+    if profile.id != profile_id and not is_admin_profile(profile):
         raise HTTPException(status_code=403, detail="Solo puedes modificar tu propio perfil.")
-    profile.display_name = data.display_name.strip()
+    target = profile if profile.id == profile_id else db.query(Profile).filter(Profile.id == profile_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Perfil no encontrado.")
+    target.display_name = data.display_name.strip()
     db.commit()
-    return {"id": profile.id, "display_name": profile.display_name}
+    return {"id": target.id, "display_name": target.display_name}
+
+
+@app.put("/api/profiles/{profile_id}/password")
+def change_password(
+    profile_id: str,
+    data: PasswordChange,
+    profile: Profile = Depends(get_profile),
+    db: Session = Depends(get_db),
+):
+    """Cambia la contraseña de un perfil.
+    - El admin puede cambiar la de cualquier perfil sin la contraseña actual.
+    - Un perfil normal solo puede cambiar la suya, proporcionando la actual.
+    """
+    new_pwd = (data.new_password or "").strip()
+    if len(new_pwd) < 4:
+        raise HTTPException(status_code=400, detail="La nueva contraseña debe tener al menos 4 caracteres.")
+    target = profile if profile.id == profile_id else db.query(Profile).filter(Profile.id == profile_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Perfil no encontrado.")
+    if profile.id != profile_id:
+        if not is_admin_profile(profile):
+            raise HTTPException(status_code=403, detail="No autorizado.")
+    else:
+        # Cambio de la propia contraseña: validar la actual si existe.
+        if target.password_hash and not verify_password(data.current_password or "", target.password_hash, target.password_salt or ""):
+            raise HTTPException(status_code=401, detail="Contraseña actual incorrecta.")
+    set_profile_password(target, new_pwd)
+    db.commit()
+    _record_audit_event(
+        action="password_changed",
+        profile_id=target.id,
+        profile_name=target.display_name or target.name,
+        role=target.role,
+        status_code=200,
+        method="PUT",
+        path=f"/api/profiles/{profile_id}/password",
+        actor_admin=1 if is_admin_profile(profile) else 0,
+        detail=("Cambiada por admin" if profile.id != target.id else None),
+    )
+    return {"status": "ok", "profile_id": target.id}
 
 
 @app.delete("/api/profiles/{profile_id}")
@@ -227,14 +521,99 @@ def delete_profile(
     profile: Profile = Depends(get_profile),
     db: Session = Depends(get_db),
 ):
-    """Desactiva un perfil (soft delete). Solo puede borrarse a sí mismo."""
-    if profile.id != profile_id:
-        raise HTTPException(status_code=403, detail="Solo puedes eliminar tu propio perfil.")
-    if profile_id == DEFAULT_PROFILE_ID:
-        raise HTTPException(status_code=400, detail="El perfil por defecto no puede eliminarse.")
-    profile.is_active = 0
+    """Soft delete. Solo el admin puede borrar otros perfiles; cualquiera puede
+    borrarse a sí mismo (excepto el perfil por defecto y el propio admin)."""
+    if profile_id in (DEFAULT_PROFILE_ID, ADMIN_PROFILE_ID):
+        raise HTTPException(status_code=400, detail="Este perfil no puede eliminarse.")
+    if profile.id != profile_id and not is_admin_profile(profile):
+        raise HTTPException(status_code=403, detail="Solo el administrador puede eliminar otros perfiles.")
+    target = profile if profile.id == profile_id else db.query(Profile).filter(Profile.id == profile_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Perfil no encontrado.")
+    target.is_active = 0
     db.commit()
+    _record_audit_event(
+        action="profile_deleted",
+        profile_id=target.id,
+        profile_name=target.display_name or target.name,
+        role=target.role,
+        status_code=200,
+        method="DELETE",
+        path=f"/api/profiles/{profile_id}",
+        actor_admin=1 if is_admin_profile(profile) else 0,
+        detail=(f"Borrado por admin {profile.name}" if profile.id != target.id else "Auto-borrado"),
+    )
     return {"status": "deleted", "profile_id": profile_id}
+
+
+# ── Endpoints exclusivos del administrador ─────────────────────────────────
+
+def require_admin(profile: Profile = Depends(get_profile)) -> Profile:
+    if not is_admin_profile(profile):
+        raise HTTPException(status_code=403, detail="Endpoint reservado al perfil administrador.")
+    return profile
+
+
+@app.get("/api/admin/audit-log")
+def get_audit_log(
+    limit: int = 200,
+    offset: int = 0,
+    action: str = "",
+    profile_id: str = "",
+    admin: Profile = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Lista entradas del log de auditoría. Solo admin."""
+    limit = max(1, min(int(limit or 200), 1000))
+    offset = max(0, int(offset or 0))
+    q = db.query(AuditLog)
+    if action:
+        q = q.filter(AuditLog.action == action)
+    if profile_id:
+        q = q.filter(AuditLog.profile_id == profile_id)
+    total = q.count()
+    entries = q.order_by(AuditLog.timestamp.desc()).offset(offset).limit(limit).all()
+    return {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "entries": [
+            {
+                "id": e.id,
+                "timestamp": e.timestamp.isoformat() if e.timestamp else None,
+                "profile_id": e.profile_id,
+                "profile_name": e.profile_name,
+                "role": e.role,
+                "action": e.action,
+                "method": e.method,
+                "path": e.path,
+                "status_code": e.status_code,
+                "detail": e.detail,
+                "actor_admin": bool(e.actor_admin),
+                "ip": e.ip,
+            }
+            for e in entries
+        ],
+    }
+
+
+@app.get("/api/admin/audit-log/stats")
+def get_audit_log_stats(
+    admin: Profile = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Resumen agregado del log para el panel admin."""
+    from sqlalchemy import func
+    total = db.query(func.count(AuditLog.id)).scalar() or 0
+    by_action = db.query(AuditLog.action, func.count(AuditLog.id)).group_by(AuditLog.action).all()
+    by_role = db.query(AuditLog.role, func.count(AuditLog.id)).group_by(AuditLog.role).all()
+    last = db.query(AuditLog).order_by(AuditLog.timestamp.desc()).first()
+    return {
+        "total": int(total),
+        "by_action": [{"action": a or "(none)", "count": int(c)} for a, c in by_action],
+        "by_role": [{"role": r or "(none)", "count": int(c)} for r, c in by_role],
+        "last_event_at": last.timestamp.isoformat() if (last and last.timestamp) else None,
+    }
 
 
 # ── Dashboard ──────────────────────────────────────────

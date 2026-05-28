@@ -1,9 +1,14 @@
 import { state } from "./state.js";
-import { fetchProfiles, createProfile, fetchProfileToken } from "./api.js";
+import {
+    fetchProfiles, createProfile, fetchProfileToken,
+    adminLogin, deleteProfileById,
+} from "./api.js";
+import { showToast } from "./utils.js";
 
 // ── Role System ────────────────────────────────────────
 
 const ROLE_LABELS = {
+    admin:        { label: "Administrador",          icon: "🛡", color: "#dc2626" },
     demo_jurado:  { label: "Demo / Jurado",          icon: "⭐", color: "#6366f1" },
     analista:     { label: "Analista de Siniestros", icon: "📋", color: "#0ea5e9" },
     antifraude:   { label: "Anti-Fraude",            icon: "🔍", color: "#ef4444" },
@@ -21,6 +26,7 @@ export function getRoleLabel(role) {
 
 export function detectRole(profileName) {
     const n = (profileName || "").toLowerCase();
+    if (n === "admin" || n.includes("administrador")) return "admin";
     if (n.includes("jurado") || n.includes("demo")) return "demo_jurado";
     if (n.includes("antifraude") || n.includes("fraude") || n.includes("fraud")) return "antifraude";
     if (n.includes("jefatura") || n.includes("jefe") || n.includes("gerente") || n.includes("director")) return "jefatura";
@@ -33,15 +39,24 @@ export function detectRole(profileName) {
     return "analista";
 }
 
+export function isAdmin() {
+    return state.currentRole === "admin" || state.adminMode === true;
+}
+
 export function getPermissions() {
     const role = state.currentRole || "analista";
-    // Permisos de UI por rol.
-    // - canRegisterClaim: puede crear siniestros (Operaciones)
-    // - canManageTariff: puede crear/editar/eliminar tarifario (Costos, Contabilidad)
-    // - canApproveInitial / canEscalate: decisión inicial sobre auditoría (Costos, Contabilidad)
-    // - canFinalDecision: decisión sobre siniestros ya escalados (Jefatura)
-    // - canViewLegalNotifications: ver bandeja de Legal
     const map = {
+        admin: {
+            canRunAuditAll: true, canRunAI: true,
+            canViewFraud: true, canViewPortfolio: true,
+            canViewCustomers: true, canViewAudit: true,
+            canRegisterClaim: true, canManageTariff: true,
+            canApproveInitial: true, canEscalate: true,
+            canFinalDecision: true, canViewLegalNotifications: true,
+            canReviewDecision: true,
+            canViewSystemAudit: true,
+            canDeleteProfiles: true,
+        },
         demo_jurado: {
             canRunAuditAll: true, canRunAI: true,
             canViewFraud: true, canViewPortfolio: true,
@@ -49,7 +64,7 @@ export function getPermissions() {
             canRegisterClaim: true, canManageTariff: true,
             canApproveInitial: true, canEscalate: true,
             canFinalDecision: true, canViewLegalNotifications: true,
-            canReviewDecision: true, // legado
+            canReviewDecision: true,
         },
         analista: {
             canRunAuditAll: false, canRunAI: false,
@@ -67,7 +82,7 @@ export function getPermissions() {
             canRegisterClaim: false, canManageTariff: false,
             canApproveInitial: false, canEscalate: false,
             canFinalDecision: false, canViewLegalNotifications: false,
-            canReviewDecision: false, // Anti-Fraude NO toma decisión de aprobar/escalar
+            canReviewDecision: false,
         },
         jefatura: {
             canRunAuditAll: true, canRunAI: true,
@@ -124,7 +139,13 @@ export function getPermissions() {
             canReviewDecision: false,
         },
     };
-    return map[role] || map.analista;
+    const base = map[role] || map.analista;
+    // Modo admin engaged sobre un perfil prestado: hereda permisos del perfil
+    // pero conserva la capacidad de ver el log de auditoría y borrar perfiles.
+    if (state.adminMode) {
+        return { ...base, canViewSystemAudit: true, canDeleteProfiles: true };
+    }
+    return base;
 }
 
 // ── Persistencia de sesión ─────────────────────────────
@@ -141,15 +162,26 @@ export function saveProfileSession(id, name, token, role) {
     localStorage.setItem("profileRole", resolvedRole);
 }
 
+export function setAdminSession(token, isAdminProfile) {
+    state.adminToken = token;
+    state.adminMode = !!isAdminProfile;
+    if (token) localStorage.setItem("adminToken", token); else localStorage.removeItem("adminToken");
+    if (state.adminMode) localStorage.setItem("adminMode", "1"); else localStorage.removeItem("adminMode");
+}
+
 export function clearProfileSession() {
     state.currentProfileId = null;
     state.currentProfileName = null;
     state.currentProfileToken = null;
     state.currentRole = "analista";
+    state.adminToken = null;
+    state.adminMode = false;
     localStorage.removeItem("profileId");
     localStorage.removeItem("profileName");
     localStorage.removeItem("profileToken");
     localStorage.removeItem("profileRole");
+    localStorage.removeItem("adminToken");
+    localStorage.removeItem("adminMode");
 }
 
 export function hasActiveSession() {
@@ -175,13 +207,32 @@ export function showProfileSelector() {
                     </svg>
                 </div>
                 <h2>Plataforma de Inteligencia</h2>
-                <p class="profile-modal-sub">Selecciona tu perfil para acceder al sistema</p>
+                <p class="profile-modal-sub">Inicia sesión con tu perfil</p>
             </div>
+
+            <div id="admin-mode-banner" class="profile-admin-banner" style="display:${state.adminMode ? "flex" : "none"};">
+                <span>🛡 <strong>Modo Admin activo</strong> — puedes saltar entre perfiles sin contraseña</span>
+                <button class="btn btn-ghost btn-sm" id="btn-disable-admin">Salir</button>
+            </div>
+
             <div class="profile-list" id="profile-list-container">
                 <div class="profile-loading">Cargando perfiles...</div>
             </div>
+
             <div class="profile-modal-divider">
-                <span>o crea uno nuevo</span>
+                <span>Administrador</span>
+            </div>
+            <details class="profile-admin-section" id="admin-login-section" ${state.adminMode ? "" : ""}>
+                <summary class="profile-admin-toggle">🛡 Acceder con clave maestra (modo testing)</summary>
+                <div class="profile-admin-form">
+                    <p class="profile-admin-hint">Permite saltar entre perfiles sin contraseñas. Default: <code>admin</code> (configurable vía env <code>ADMIN_PASSWORD</code>).</p>
+                    <input type="password" id="admin-master-password" class="profile-name-input" placeholder="Clave maestra" autocomplete="off">
+                    <button class="btn btn-danger" id="btn-admin-login">Activar modo admin</button>
+                </div>
+            </details>
+
+            <div class="profile-modal-divider">
+                <span>o crea un perfil nuevo</span>
             </div>
             <div class="profile-create-form">
                 <input
@@ -190,6 +241,14 @@ export function showProfileSelector() {
                     class="profile-name-input"
                     placeholder="Nombre del perfil (ej: María Analista)"
                     maxlength="80"
+                    autocomplete="off"
+                />
+                <input
+                    type="password"
+                    id="new-profile-password"
+                    class="profile-name-input"
+                    placeholder="Contraseña (mín. 4 caracteres)"
+                    autocomplete="new-password"
                 />
                 <select id="new-profile-role" class="profile-role-select">
                     <option value="operaciones">🛠 Operaciones</option>
@@ -216,8 +275,23 @@ export function showProfileSelector() {
 
     document.getElementById("btn-create-profile").addEventListener("click", handleCreateProfile);
     document.getElementById("new-profile-name").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") document.getElementById("new-profile-password")?.focus();
+    });
+    document.getElementById("new-profile-password").addEventListener("keydown", (e) => {
         if (e.key === "Enter") handleCreateProfile();
     });
+    document.getElementById("btn-admin-login").addEventListener("click", handleAdminLogin);
+    document.getElementById("admin-master-password").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") handleAdminLogin();
+    });
+    const btnDisableAdmin = document.getElementById("btn-disable-admin");
+    if (btnDisableAdmin) {
+        btnDisableAdmin.addEventListener("click", () => {
+            setAdminSession(null, false);
+            showToast("Modo admin desactivado.", "info");
+            showProfileSelector(); // re-render
+        });
+    }
 }
 
 export function signOut() {
@@ -240,43 +314,124 @@ async function loadProfileList() {
     container.innerHTML = profiles.map(p => {
         const role = p.role || detectRole(p.display_name || p.name);
         const roleInfo = getRoleLabel(role);
+        const isAdminProfile = role === "admin";
+        const needsPassword = !state.adminMode && !isAdminProfile;
         return `
-        <button class="profile-item" data-id="${p.id}" data-name="${p.display_name || p.name}" data-role="${role}">
-            <div class="profile-avatar" style="background:${roleInfo.color}22;color:${roleInfo.color}">${roleInfo.icon}</div>
-            <div class="profile-item-info">
-                <span class="profile-item-name">${p.display_name || p.name}</span>
-                <span class="profile-item-role" style="color:${roleInfo.color}">${roleInfo.label}</span>
+        <div class="profile-row" data-id="${p.id}" data-name="${p.display_name || p.name}" data-role="${role}" data-admin="${isAdminProfile ? 1 : 0}">
+            <button class="profile-item">
+                <div class="profile-avatar" style="background:${roleInfo.color}22;color:${roleInfo.color}">${roleInfo.icon}</div>
+                <div class="profile-item-info">
+                    <span class="profile-item-name">${p.display_name || p.name}</span>
+                    <span class="profile-item-role" style="color:${roleInfo.color}">${roleInfo.label}</span>
+                </div>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+            <div class="profile-row-password" style="display:none;">
+                <input type="password" class="profile-name-input profile-pwd-input" placeholder="${isAdminProfile ? "Clave maestra del admin" : "Contraseña del perfil"}" autocomplete="off">
+                <button class="btn btn-primary btn-sm profile-pwd-submit">Entrar</button>
             </div>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
-        </button>`;
+        </div>`;
     }).join("");
 
-    container.querySelectorAll(".profile-item").forEach(btn => {
-        btn.addEventListener("click", () =>
-            handleSelectProfile(btn.dataset.id, btn.dataset.name, btn.dataset.role)
-        );
+    container.querySelectorAll(".profile-row").forEach(row => {
+        const id = row.dataset.id;
+        const name = row.dataset.name;
+        const role = row.dataset.role;
+        const isAdminProfile = row.dataset.admin === "1";
+        const btn = row.querySelector(".profile-item");
+        const pwdBox = row.querySelector(".profile-row-password");
+        const pwdInput = row.querySelector(".profile-pwd-input");
+        const pwdSubmit = row.querySelector(".profile-pwd-submit");
+
+        const handleEnter = async () => {
+            const pwd = (pwdInput?.value || "").trim();
+            await handleSelectProfile(id, name, role, pwd, { isAdminProfile });
+        };
+
+        btn.addEventListener("click", async () => {
+            if (state.adminMode && !isAdminProfile) {
+                // Switch libre en modo admin
+                await handleSelectProfile(id, name, role, "", { viaAdmin: true });
+                return;
+            }
+            if (isAdminProfile) {
+                // Toggle inline password
+                pwdBox.style.display = pwdBox.style.display === "none" ? "flex" : "none";
+                if (pwdBox.style.display === "flex") pwdInput.focus();
+                return;
+            }
+            // Toggle inline password para perfil normal
+            pwdBox.style.display = pwdBox.style.display === "none" ? "flex" : "none";
+            if (pwdBox.style.display === "flex") pwdInput.focus();
+        });
+
+        if (pwdSubmit) pwdSubmit.addEventListener("click", handleEnter);
+        if (pwdInput) pwdInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") handleEnter();
+        });
     });
 }
 
-async function handleSelectProfile(profileId, profileName, roleHint) {
+async function handleSelectProfile(profileId, profileName, roleHint, password, { isAdminProfile = false, viaAdmin = false } = {}) {
     showProfileError("");
     try {
-        const data = await fetchProfileToken(profileId);
+        let data;
+        if (isAdminProfile) {
+            // Login admin con clave maestra
+            data = await adminLogin(password);
+            setAdminSession(data.token, true);
+        } else {
+            data = await fetchProfileToken(profileId, password, { viaAdmin: viaAdmin || state.adminMode });
+        }
         const role = data.role || roleHint || detectRole(data.display_name || data.name);
         saveProfileSession(data.profile_id, data.display_name || data.name, data.token, role);
+        // Si la persona acaba de loguear como admin, registrar también el admin token
+        if (role === "admin") setAdminSession(data.token, true);
         dismissProfileSelector();
-        window.dispatchEvent(new CustomEvent("profile:selected", { detail: { name: profileName, role } }));
+        window.dispatchEvent(new CustomEvent("profile:selected", { detail: { name: data.display_name || data.name, role } }));
     } catch (e) {
-        showProfileError("No se pudo conectar con el perfil: " + e.message);
+        showProfileError(e.message || "No se pudo iniciar sesión");
+    }
+}
+
+async function handleAdminLogin() {
+    const input = document.getElementById("admin-master-password");
+    const password = (input?.value || "").trim();
+    if (!password) {
+        showProfileError("Ingresa la clave maestra.");
+        return;
+    }
+    const btn = document.getElementById("btn-admin-login");
+    btn.disabled = true;
+    const original = btn.textContent;
+    btn.textContent = "Validando...";
+    try {
+        const data = await adminLogin(password);
+        setAdminSession(data.token, true);
+        saveProfileSession(data.profile_id, data.display_name || data.name, data.token, "admin");
+        dismissProfileSelector();
+        window.dispatchEvent(new CustomEvent("profile:selected", { detail: { name: data.display_name || data.name, role: "admin" } }));
+        showToast("🛡 Modo admin activado — switch libre entre perfiles", "success");
+    } catch (e) {
+        showProfileError(e.message || "Clave maestra incorrecta");
+    } finally {
+        btn.disabled = false;
+        btn.textContent = original;
     }
 }
 
 async function handleCreateProfile() {
-    const input = document.getElementById("new-profile-name");
+    const nameInput = document.getElementById("new-profile-name");
+    const pwdInput = document.getElementById("new-profile-password");
     const roleSelect = document.getElementById("new-profile-role");
-    const name = (input?.value || "").trim();
+    const name = (nameInput?.value || "").trim();
+    const password = (pwdInput?.value || "").trim();
     if (!name) {
         showProfileError("Escribe un nombre para el perfil.");
+        return;
+    }
+    if (password.length < 4) {
+        showProfileError("La contraseña debe tener al menos 4 caracteres.");
         return;
     }
     const role = roleSelect?.value || "analista";
@@ -287,7 +442,7 @@ async function handleCreateProfile() {
     btn.textContent = "Creando...";
 
     try {
-        const data = await createProfile(name, role);
+        const data = await createProfile(name, role, password);
         const resolvedRole = data.role || role;
         saveProfileSession(data.id, data.display_name || data.name, data.token, resolvedRole);
         dismissProfileSelector();
@@ -312,6 +467,23 @@ function showProfileError(msg) {
     el.style.display = msg ? "block" : "none";
 }
 
+// ── Acciones admin sobre perfiles ──────────────────────────────────────────
+
+export async function adminDeleteProfile(profileId, profileName) {
+    if (!state.adminMode && state.currentRole !== "admin") {
+        showToast("Solo el administrador puede borrar perfiles.", "error");
+        return false;
+    }
+    const ok = window.confirm(`¿Eliminar el perfil "${profileName}"?\nEsta acción es irreversible.`);
+    if (!ok) return false;
+    const res = await deleteProfileById(profileId);
+    if (res) {
+        showToast(`Perfil "${profileName}" eliminado`, "success");
+        return true;
+    }
+    return false;
+}
+
 // ── Navbar ─────────────────────────────────────────────
 
 export function updateProfileBadge() {
@@ -328,12 +500,13 @@ export function updateProfileBadge() {
     const roleBadge = document.getElementById("nav-role-badge");
     if (roleBadge && state.currentRole) {
         const roleInfo = getRoleLabel(state.currentRole);
-        roleBadge.textContent = roleInfo.icon + " " + roleInfo.label;
-        roleBadge.style.color = roleInfo.color;
+        const prefix = state.adminMode && state.currentRole !== "admin" ? "🛡 " : "";
+        roleBadge.textContent = prefix + roleInfo.icon + " " + roleInfo.label;
+        roleBadge.style.color = state.adminMode && state.currentRole !== "admin" ? "#dc2626" : roleInfo.color;
     }
 
     const role = state.currentRole;
-    const isDashboardRole = ["jefatura", "demo_jurado", "legal"].includes(role);
+    const isDashboardRole = ["jefatura", "demo_jurado", "legal", "admin"].includes(role);
     const homeLink = document.getElementById("nav-dashboard");
     const homeLabel = document.getElementById("nav-home-label");
     const auditPanelLink = document.getElementById("nav-audit-panel");
@@ -352,13 +525,11 @@ export function updateProfileBadge() {
     const perms = getPermissions();
     const uploadLink = document.getElementById("nav-upload");
     if (uploadLink) {
-        // "Cargar" sirve para subir facturas; sólo Operaciones registra siniestros pero
-        // las facturas se cargan también desde otros roles operativos. Mantenemos visible.
         uploadLink.style.display = (role === "legal") ? "none" : "";
     }
     const tarifarioLink = document.getElementById("nav-tarifario");
     if (tarifarioLink) {
-        tarifarioLink.style.display = ""; // Tarifario es visible para todos (read).
+        tarifarioLink.style.display = "";
     }
     const auditLink = document.getElementById("nav-auditorias");
     if (auditLink) {
@@ -366,11 +537,21 @@ export function updateProfileBadge() {
     }
     const sinLink = document.getElementById("nav-siniestros");
     if (sinLink) {
-        sinLink.style.display = ""; // Todos ven la lista de siniestros (read).
+        sinLink.style.display = "";
     }
     const runAuditBtn = document.getElementById("btn-run-audit");
     if (runAuditBtn) {
         runAuditBtn.style.display = perms.canRunAuditAll ? "" : "none";
+    }
+    // Admin: panel del log de auditoría interna
+    const adminLink = document.getElementById("nav-admin-audit");
+    if (adminLink) {
+        adminLink.style.display = perms.canViewSystemAudit ? "flex" : "none";
+    }
+    // Botón "Cambiar perfil" disponible en modo admin para switch rápido
+    const switchBtn = document.getElementById("btn-switch-profile");
+    if (switchBtn) {
+        switchBtn.style.display = state.adminMode ? "flex" : "none";
     }
 }
 
@@ -380,4 +561,10 @@ export function applyProfileUI() {
 
 export function setProfile(profile) {
     // mantener compatibilidad legada
+}
+
+// ── Triggers públicos ─────────────────────────────────
+
+export function openProfileSwitcher() {
+    showProfileSelector();
 }

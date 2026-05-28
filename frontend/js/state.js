@@ -5,6 +5,10 @@ export const state = {
     currentProfileName: localStorage.getItem("profileName") || null,
     currentProfileToken: localStorage.getItem("profileToken") || null,
     currentRole: localStorage.getItem("profileRole") || "analista",
+    // Modo admin: cuando se ingresó la clave maestra, se guarda el token admin
+    // para permitir saltar libremente entre perfiles sin pedir su contraseña.
+    adminToken: localStorage.getItem("adminToken") || null,
+    adminMode: localStorage.getItem("adminMode") === "1",
 
     // ── Datos de la aplicación ─────────────────────────────
     dashboardData: null,
@@ -40,4 +44,7 @@ export const state = {
     // Filtros globales
     includeTest: true,
     workflowFocus: null,
+
+    // Admin audit log page
+    auditLogFilter: { action: "", profileId: "" },
 };

@@ -6,11 +6,14 @@ let uploadInFlight = false;
 
 export async function loadUploadPage() {
     const claims = await apiFetch("/claims") || [];
-    renderUploadPage(claims);
+    // Solo siniestros que aún no tienen factura cargada
+    const pendingClaims = claims.filter(c => (c.invoice_count || 0) === 0);
+    renderUploadPage(pendingClaims, claims.length);
 }
 
-function renderUploadPage(claims) {
+function renderUploadPage(claims, totalClaims = 0) {
     const page = document.getElementById("page-upload");
+    const hiddenCount = Math.max(0, totalClaims - claims.length);
     page.innerHTML = `
         <div class="page-header">
             <h1>Auditar Factura PDF</h1>
@@ -22,7 +25,10 @@ function renderUploadPage(claims) {
                 <div class="card-header"><h2>Subir Factura PDF</h2></div>
                 <div class="card-body">
                     <div style="margin-bottom:14px;">
-                        <label style="font-size:0.85rem; color:var(--text-muted); margin-bottom:6px; display:block;">Siniestro asociado (opcional)</label>
+                        <label style="font-size:0.85rem; color:var(--text-muted); margin-bottom:6px; display:block;">
+                            Siniestro asociado (opcional) — solo siniestros sin factura
+                            ${hiddenCount > 0 ? `<span style="color:var(--accent-indigo); font-weight:600;">· ${hiddenCount} ya con factura ocultos</span>` : ""}
+                        </label>
                         <select id="upload-claim-select" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; outline:none; font-family:inherit;">
                             <option value="">— Sin siniestro (audit solo de formato/tarifario) —</option>
                             ${claims.map(c => `<option value="${c.claim_number}">${c.claim_number} · ${c.claim_type.replace(/_/g, ' ')} · ${c.vehicle_plate}</option>`).join("")}

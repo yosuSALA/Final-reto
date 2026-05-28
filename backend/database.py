@@ -42,17 +42,22 @@ def get_db():
 # ── ID del perfil por defecto (datos pre-existentes) ───────────────────────────
 DEFAULT_PROFILE_ID = "00000000-0000-0000-0000-000000000001"
 
+# Contraseña por defecto asignada a perfiles legados sin clave configurada.
+LEGACY_DEFAULT_PASSWORD = "demo"
+
 
 def init_db():
     """Crear todas las tablas + migración liviana de columnas nuevas."""
     from backend.models import (
         Profile, Siniestro, Workshop, Invoice, InvoiceItem,
         TariffItem, AuditResult, AuditFinding,
-        Poliza, AseguradoSintetico, Vehiculo, Documento,
+        Poliza, AseguradoSintetico, Vehiculo, Documento, AuditLog,
     )
     Base.metadata.create_all(bind=engine)
     _migrate_columns()
     _ensure_default_profile()
+    _ensure_admin_profile()
+    _assign_default_passwords()
 
 
 def _migrate_columns():
@@ -68,6 +73,9 @@ def _migrate_columns():
         # columnas de aislamiento por perfil
         ("profiles", "token_secret", "VARCHAR(64)"),
         ("profiles", "role", "VARCHAR(50) DEFAULT 'analista'"),
+        # columnas de autenticación con clave
+        ("profiles", "password_hash", "VARCHAR(128)"),
+        ("profiles", "password_salt", "VARCHAR(32)"),
         ("workshops", "profile_id", f"VARCHAR(36) REFERENCES profiles(id)"),
         ("asegurados_sinteticos", "profile_id", f"VARCHAR(36) REFERENCES profiles(id)"),
         ("polizas", "profile_id", f"VARCHAR(36) REFERENCES profiles(id)"),
@@ -97,7 +105,7 @@ def _ensure_default_profile():
     huérfanos (sin profile_id) a ese perfil.
     """
     from sqlalchemy import text
-    from backend.auth import new_token_secret, generate_profile_token
+    from backend.auth import new_token_secret
 
     db = SessionLocal()
     try:
@@ -146,5 +154,62 @@ def _ensure_default_profile():
             except Exception:
                 pass
         db.commit()
+    finally:
+        db.close()
+
+
+def _ensure_admin_profile():
+    """Crea (o repara) el perfil admin con la clave maestra del entorno."""
+    from backend.auth import (
+        new_token_secret, set_profile_password, admin_master_password,
+        ADMIN_PROFILE_ID, ADMIN_PROFILE_NAME,
+    )
+    from backend.models import Profile
+
+    db = SessionLocal()
+    try:
+        admin = db.query(Profile).filter(Profile.id == ADMIN_PROFILE_ID).first()
+        master = admin_master_password()
+        if not admin:
+            admin = Profile(
+                id=ADMIN_PROFILE_ID,
+                name=ADMIN_PROFILE_NAME,
+                display_name="Administrador",
+                role="admin",
+                token_secret=new_token_secret(),
+                is_active=1,
+            )
+            set_profile_password(admin, master)
+            db.add(admin)
+            db.commit()
+        else:
+            # Si el rol cambió o falta hash, re-aplicar
+            admin.role = "admin"
+            admin.is_active = 1
+            if not admin.token_secret:
+                admin.token_secret = new_token_secret()
+            # Re-aplica siempre la contraseña maestra del env para que ADMIN_PASSWORD
+            # sea autoritativa entre arranques.
+            set_profile_password(admin, master)
+            db.commit()
+    finally:
+        db.close()
+
+
+def _assign_default_passwords():
+    """A perfiles existentes sin password_hash, les asigna 'demo' como clave."""
+    from backend.auth import set_profile_password
+    from backend.models import Profile
+
+    db = SessionLocal()
+    try:
+        legacy = db.query(Profile).filter(
+            (Profile.password_hash.is_(None)) | (Profile.password_hash == ""),
+            Profile.role != "admin",
+        ).all()
+        for p in legacy:
+            set_profile_password(p, LEGACY_DEFAULT_PASSWORD)
+        if legacy:
+            db.commit()
     finally:
         db.close()

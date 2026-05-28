@@ -7,6 +7,7 @@ import { loadUploadPage } from "./pages/upload.js";
 import { loadPendingDetail } from "./pages/pendingDetail.js";
 import { loadAuditDetail } from "./pages/auditDetail.js";
 import { loadClaimWorkspace } from "./pages/claimWorkspace.js";
+import { loadAdminAuditLog } from "./pages/adminAuditLog.js";
 
 export function navigateTo(page, params = {}) {
     document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
@@ -22,6 +23,7 @@ export function navigateTo(page, params = {}) {
         case "tarifario":       loadTarifario(); break;
         case "siniestros":      loadSiniestros(); break;
         case "upload":          loadUploadPage(); break;
+        case "admin-audit":     loadAdminAuditLog(); break;
         case "audit-detail":
             document.getElementById("page-audit-detail").classList.add("active");
             loadAuditDetail(params.auditId);
@@ -38,8 +40,9 @@ export function navigateTo(page, params = {}) {
 }
 
 export function routeFromHash() {
-    const isDashboardRole = ["jefatura", "demo_jurado", "legal"].includes(state.currentRole);
-    const defaultPage = isDashboardRole ? "dashboard" : "audit-panel";
+    const isDashboardRole = ["jefatura", "demo_jurado", "legal", "admin"].includes(state.currentRole);
+    const defaultPage = state.currentRole === "admin" ? "admin-audit"
+                       : isDashboardRole ? "dashboard" : "audit-panel";
     let hash = location.hash.replace("#", "") || defaultPage;
     if (!isDashboardRole && hash === "dashboard") hash = "audit-panel";
     // Legal no debe entrar en auditorías ni en upload/cargar

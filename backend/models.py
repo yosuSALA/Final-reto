@@ -79,6 +79,9 @@ class Profile(Base):
     role = Column(String(50), default="analista")
     # HMAC secret por perfil — nunca se expone al cliente
     token_secret = Column(String(64), nullable=False)
+    # Credenciales (PBKDF2-HMAC-SHA256). NULL para perfiles sin clave configurada.
+    password_hash = Column(String(128), nullable=True)
+    password_salt = Column(String(32), nullable=True)
     is_active = Column(Integer, default=1)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -89,6 +92,24 @@ class Profile(Base):
     invoices = relationship("Invoice", back_populates="profile")
     tariff_items = relationship("TariffItem", back_populates="profile")
     audit_results = relationship("AuditResult", back_populates="profile")
+
+
+class AuditLog(Base):
+    """Log inmutable de acciones de escritura y sesión, visible solo para admin."""
+    __tablename__ = "audit_log"
+
+    id = Column(Integer, primary_key=True, index=True)
+    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+    profile_id = Column(String(36), nullable=True, index=True)
+    profile_name = Column(String(200), nullable=True)
+    role = Column(String(50), nullable=True)
+    action = Column(String(50), nullable=False, index=True)
+    method = Column(String(10), nullable=True)
+    path = Column(String(300), nullable=True)
+    status_code = Column(Integer, nullable=True)
+    detail = Column(Text, nullable=True)
+    actor_admin = Column(Integer, default=0)
+    ip = Column(String(64), nullable=True)
 
 
 # ── Modelos ────────────────────────────────────────────

@@ -156,11 +156,13 @@ export async function fetchProfiles() {
     return await res.json();
 }
 
-export async function createProfile(name, role = "analista", displayName = "") {
+export async function createProfile(name, role = "analista", password = "", displayName = "") {
+    const headers = { "Content-Type": "application/json" };
+    if (state.adminToken) headers["X-Profile-Token"] = state.adminToken;
     const res = await fetch(`${API}/profiles`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, display_name: displayName || name, role }),
+        headers,
+        body: JSON.stringify({ name, display_name: displayName || name, role, password }),
     });
     if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -169,13 +171,60 @@ export async function createProfile(name, role = "analista", displayName = "") {
     return await res.json();
 }
 
-export async function fetchProfileToken(profileId) {
+/**
+ * Login a un perfil con contraseña, o emisión por admin (token admin en header
+ * permite saltar la contraseña).
+ */
+export async function fetchProfileToken(profileId, password = "", { viaAdmin = false } = {}) {
+    const headers = { "Content-Type": "application/json" };
+    if (viaAdmin && state.adminToken) {
+        headers["X-Profile-Token"] = state.adminToken;
+    }
     const res = await fetch(`${API}/profiles/${profileId}/token`, {
         method: "POST",
+        headers,
+        body: JSON.stringify({ password }),
     });
     if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(errorMessage(err, "No se pudo obtener el token de perfil"));
+        throw new Error(errorMessage(err, "No se pudo iniciar sesión en el perfil"));
     }
     return await res.json();
+}
+
+export async function adminLogin(password) {
+    const res = await fetch(`${API}/profiles/admin-login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(errorMessage(err, "Clave maestra incorrecta"));
+    }
+    return await res.json();
+}
+
+export async function deleteProfileById(profileId) {
+    return apiDelete(`/profiles/${profileId}`);
+}
+
+export async function changePassword(profileId, newPassword, currentPassword = "") {
+    return apiPut(`/profiles/${profileId}/password`, {
+        new_password: newPassword,
+        current_password: currentPassword,
+    });
+}
+
+export async function fetchAuditLog({ limit = 200, offset = 0, action = "", profileId = "" } = {}) {
+    const params = new URLSearchParams();
+    params.set("limit", String(limit));
+    params.set("offset", String(offset));
+    if (action) params.set("action", action);
+    if (profileId) params.set("profile_id", profileId);
+    return apiFetch(`/admin/audit-log?${params.toString()}`);
+}
+
+export async function fetchAuditLogStats() {
+    return apiFetch("/admin/audit-log/stats");
 }

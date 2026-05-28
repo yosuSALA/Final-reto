@@ -18,6 +18,12 @@ _ALL = frozenset({
 
 # Permisos por rol: read/write sobre tablas (análogo a GRANT en SQL)
 TABLE_PERMISSIONS: dict[str, dict[str, frozenset]] = {
+    "admin": {
+        # Administrador del sistema: acceso completo. Además puede borrar
+        # perfiles y ver el log de auditoría interna (chequeo aparte en main.py).
+        "read":  _ALL,
+        "write": _ALL,
+    },
     "demo_jurado": {
         "read":  _ALL,
         "write": _ALL,
@@ -90,8 +96,9 @@ class ProfileScope:
             )
 
     def require_role(self, *allowed_roles: str) -> None:
-        """Verifica que el rol activo esté en la lista permitida. 403 si no."""
-        if self.role not in allowed_roles and self.role != "demo_jurado":
+        """Verifica que el rol activo esté en la lista permitida. 403 si no.
+        Los roles 'admin' y 'demo_jurado' son exentos (acceso total)."""
+        if self.role not in allowed_roles and self.role not in ("demo_jurado", "admin"):
             raise HTTPException(
                 status_code=403,
                 detail=f"Esta acción está restringida a: {', '.join(allowed_roles)}. Tu rol actual: '{self.role}'.",

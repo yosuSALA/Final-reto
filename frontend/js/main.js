@@ -37,8 +37,10 @@ import {
 import { refreshAuditQueue, toggleAuditQueueMinimized } from "./components/auditQueue.js";
 import { initChatbotBubble } from "./components/chatbotBubble.js";
 import {
-    applyProfileUI, showProfileSelector, hasActiveSession, clearProfileSession, updateProfileBadge, signOut,
+    applyProfileUI, showProfileSelector, hasActiveSession, clearProfileSession,
+    updateProfileBadge, signOut, openProfileSwitcher, adminDeleteProfile,
 } from "./auth.js";
+import { loadAdminAuditLog } from "./pages/adminAuditLog.js";
 import { state } from "./state.js";
 
 // ── Modo oscuro ────────────────────────────────────────
@@ -85,6 +87,7 @@ Object.assign(window, {
     triggerJitAudit, triggerRulesAudit,
     auditAction, previewReport, reAuditWith,
     toggleTheme, signOut, toggleAuditQueueMinimized,
+    openProfileSwitcher, adminDeleteProfile, loadAdminAuditLog,
 });
 
 // ── Nav links ──────────────────────────────────────────
@@ -104,6 +107,11 @@ if (btnRunAudit) btnRunAudit.addEventListener("click", runFullAudit);
 const btnSignOut = document.getElementById("btn-sign-out");
 if (btnSignOut) {
     btnSignOut.addEventListener("click", signOut);
+}
+
+const btnSwitchProfile = document.getElementById("btn-switch-profile");
+if (btnSwitchProfile) {
+    btnSwitchProfile.addEventListener("click", openProfileSwitcher);
 }
 
 // ── Eventos de perfil ──────────────────────────────────

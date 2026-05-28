@@ -1414,7 +1414,72 @@ tbody tr.clickable {
     background: var(--border-color, rgba(255,255,255,0.1));
 }
 
-.profile-create-form { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(180px, 240px) auto; gap: 8px; align-items: stretch; }
+.profile-create-form { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(140px, 1fr) minmax(160px, 1fr) auto; gap: 8px; align-items: stretch; }
+
+/* ── Admin master / profile selector additions ────────── */
+.profile-admin-banner {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 10px 14px;
+    background: rgba(220, 38, 38, 0.10);
+    border: 1px solid rgba(220, 38, 38, 0.3);
+    border-radius: 8px;
+    color: #fca5a5;
+    font-size: 0.85rem;
+    margin-bottom: 12px;
+}
+.profile-admin-section { margin-top: 12px; margin-bottom: 8px; }
+.profile-admin-toggle {
+    cursor: pointer;
+    padding: 10px 14px;
+    border-radius: 8px;
+    background: rgba(220, 38, 38, 0.06);
+    border: 1px dashed rgba(220, 38, 38, 0.35);
+    color: #f87171;
+    font-weight: 600;
+    font-size: 0.85rem;
+    list-style: none;
+}
+.profile-admin-toggle::-webkit-details-marker { display: none; }
+.profile-admin-form {
+    display: flex; flex-direction: column; gap: 8px; padding: 12px 0;
+}
+.profile-admin-hint {
+    margin: 0 0 4px;
+    font-size: 0.78rem;
+    color: var(--text-muted, #888);
+}
+.profile-admin-hint code {
+    font-family: var(--font-mono);
+    background: var(--bg-elevated, rgba(255,255,255,0.06));
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 0.78rem;
+}
+
+/* Per-profile inline password row */
+.profile-row { display: flex; flex-direction: column; gap: 6px; }
+.profile-row-password {
+    display: flex; gap: 8px; align-items: stretch;
+    padding-left: 50px;
+}
+.profile-row-password .profile-pwd-input {
+    flex: 1;
+    padding: 9px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color, rgba(255,255,255,0.12));
+    background: var(--bg-elevated, rgba(255,255,255,0.06));
+    color: var(--text-primary, #fff);
+    font-size: 0.85rem;
+    font-family: inherit;
+    outline: none;
+}
+.profile-row-password .profile-pwd-input:focus { border-color: #6366f1; }
+
+@media (max-width: 640px) {
+    .profile-create-form { grid-template-columns: 1fr; }
+    .profile-row-password { padding-left: 0; }
+}
+
 
 .profile-name-input {
     flex: 1 1 180px;
