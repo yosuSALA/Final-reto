@@ -149,11 +149,9 @@ export async function createProfile(name, role = "analista", displayName = "") {
     return await res.json();
 }
 
-export async function fetchProfileToken(profileId, password = "") {
+export async function fetchProfileToken(profileId) {
     const res = await fetch(`${API}/profiles/${profileId}/token`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
     });
     if (!res.ok) {
         const err = await res.json().catch(() => ({}));

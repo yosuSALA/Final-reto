@@ -1,4 +1,5 @@
-import { loadDashboard } from "./pages/dashboard.js";
+import { loadDashboard, loadAuditPanel } from "./pages/dashboard.js";
+import { state } from "./state.js";
 import { loadAuditorias } from "./pages/auditorias.js";
 import { loadTarifario } from "./pages/tarifario.js";
 import { loadSiniestros } from "./pages/siniestros.js";
@@ -16,6 +17,7 @@ export function navigateTo(page, params = {}) {
     if (link) link.classList.add("active");
     switch (page) {
         case "dashboard":       loadDashboard(); break;
+        case "audit-panel":     loadAuditPanel(); break;
         case "auditorias":      loadAuditorias(); break;
         case "tarifario":       loadTarifario(); break;
         case "siniestros":      loadSiniestros(); break;
@@ -36,7 +38,10 @@ export function navigateTo(page, params = {}) {
 }
 
 export function routeFromHash() {
-    const hash = location.hash.replace("#", "") || "dashboard";
+    const isDashboardRole = ["jefatura", "demo_jurado"].includes(state.currentRole);
+    const defaultPage = isDashboardRole ? "dashboard" : "audit-panel";
+    let hash = location.hash.replace("#", "") || defaultPage;
+    if (!isDashboardRole && hash === "dashboard") hash = "audit-panel";
     if (hash.startsWith("audit/"))       navigateTo("audit-detail", { auditId: hash.split("/")[1] });
     else if (hash.startsWith("pending/")) navigateTo("pending-detail", { invoiceId: hash.split("/")[1] });
     else if (hash.startsWith("claim/"))  navigateTo("claim-workspace", { claimId: hash.split("/")[1] });

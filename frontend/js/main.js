@@ -2,11 +2,12 @@
 import { navigateTo, routeFromHash } from "./router.js";
 import { showToast } from "./utils.js";
 import {
-    loadDashboard, runFullAudit, toggleIncludeTest, triggerGeminiInsight,
+    loadDashboard, loadAuditPanel, runFullAudit, toggleIncludeTest, triggerGeminiInsight,
+    skipAuditGuide, reactivateAuditGuide, openWorkflowTarget, nextDemoGuide, prevDemoGuide,
 } from "./pages/dashboard.js";
 import { loadClaimWorkspace, switchWorkspaceTab } from "./pages/claimWorkspace.js";
 import {
-    loadAuditorias, setAuditSearch, setAuditTab, toggleAuditIncludeTest,
+    loadAuditorias, setAuditSearch, setAuditTab, toggleAuditIncludeTest, clearAuditWorkflowFocus,
 } from "./pages/auditorias.js";
 import {
     loadTarifario, toggleTariffForm, submitNewTariff, deleteTariff,
@@ -21,7 +22,7 @@ import {
     loadSiniestros, toggleClaimPreview,
     openNotifyModal, closeNotifyModal, saveNotifyConfig,
     openSummaryModal, closeSummaryModal,
-    setClaimsSearch, setClaimsTypeFilter, setClaimsStatusFilter, setClaimsSort,
+    setClaimsSearch, setClaimsTypeFilter, setClaimsStatusFilter, setClaimsSort, clearClaimsWorkflowFocus,
 } from "./pages/siniestros.js";
 import {
     loadUploadPage, genRandomFactura, clearGeneratedFacturas,
@@ -65,10 +66,12 @@ if (savedTheme === "dark") {
 // ── Exponer funciones a atributos onclick en HTML ──────
 
 Object.assign(window, {
-    navigateTo, showToast,
+    navigateTo, showToast, loadDashboard,
     runFullAudit, toggleIncludeTest, triggerGeminiInsight,
+    loadAuditPanel, skipAuditGuide, reactivateAuditGuide,
+    openWorkflowTarget, nextDemoGuide, prevDemoGuide,
     loadClaimWorkspace, switchWorkspaceTab,
-    setAuditSearch, setAuditTab, toggleAuditIncludeTest,
+    setAuditSearch, setAuditTab, toggleAuditIncludeTest, clearAuditWorkflowFocus,
     toggleTariffForm, submitNewTariff, deleteTariff,
     toggleTarifCat, toggleAllTarif, editTariff, cancelTariff, saveTariff,
     showCsvSchemaModal, closeCsvModal, triggerCsvFilePicker,
@@ -76,7 +79,7 @@ Object.assign(window, {
     toggleClaimPreview,
     openNotifyModal, closeNotifyModal, saveNotifyConfig,
     openSummaryModal, closeSummaryModal,
-    setClaimsSearch, setClaimsTypeFilter, setClaimsStatusFilter, setClaimsSort,
+    setClaimsSearch, setClaimsTypeFilter, setClaimsStatusFilter, setClaimsSort, clearClaimsWorkflowFocus,
     genRandomFactura, clearGeneratedFacturas, setUploadIsTest,
     handleUploadFile, auditTestPdfDirect,
     triggerJitAudit, triggerRulesAudit,

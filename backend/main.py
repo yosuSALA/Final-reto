@@ -24,7 +24,7 @@ load_dotenv()
 from backend.database import get_db, init_db, DEFAULT_PROFILE_ID
 from backend.seed_data import seed_database
 from backend.agent import AuditAgent
-from backend.auth import verify_profile_token, generate_profile_token, new_token_secret, verify_profile_access_password
+from backend.auth import verify_profile_token, generate_profile_token, new_token_secret
 from backend.profile_scope import ProfileScope
 from backend.models import (
     Profile, Siniestro, Invoice, InvoiceItem, TariffItem,
@@ -124,10 +124,6 @@ class ProfileUpdate(BaseModel):
     display_name: str
 
 
-class ProfileAccessRequest(BaseModel):
-    password: str
-
-
 @app.get("/api/profiles")
 def list_profiles(db: Session = Depends(get_db)):
     """Lista todos los perfiles activos. No requiere token."""
@@ -181,20 +177,12 @@ def create_profile(data: ProfileCreate, db: Session = Depends(get_db)):
 
 
 @app.post("/api/profiles/{profile_id}/token")
-def get_profile_token(profile_id: str, data: ProfileAccessRequest, db: Session = Depends(get_db)):
+def get_profile_token(profile_id: str, db: Session = Depends(get_db)):
     """
     Genera (o regenera) el token para un perfil existente.
     Equivale al 'login': quien conoce el profile_id puede obtener su token.
     Los UUIDs no son adivinables, lo que previene enumeración de perfiles.
     """
-    if not os.environ.get("PROFILE_ACCESS_PASSWORD"):
-        raise HTTPException(
-            status_code=503,
-            detail="PROFILE_ACCESS_PASSWORD no está configurada en .env.",
-        )
-    if not verify_profile_access_password(data.password):
-        raise HTTPException(status_code=403, detail="Contraseña de acceso inválida.")
-
     profile = db.query(Profile).filter(
         Profile.id == profile_id, Profile.is_active == 1
     ).first()
@@ -561,6 +549,17 @@ VALID_CLAIM_TYPES = {
     "rotura_parabrisas", "vandalismo",
 }
 TARIFF_CSV_REQUIRED_COLS = {"code", "description", "category", "max_price"}
+
+
+def _label_from_payload(value) -> str:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        for key in ("message", "description", "title", "id", "rule", "indicator", "name"):
+            if value.get(key):
+                return str(value[key])
+        return json.dumps(value, ensure_ascii=False)
+    return str(value)
 
 
 def parse_tariff_csv_content(text: str, existing_codes: set[str] | None = None) -> dict:
@@ -1792,6 +1791,8 @@ def get_fraud_intelligence(
                 rules_failed = _json.loads(s.fraud_rules_failed or "[]")
             except Exception:
                 rules_failed = []
+            indicators = [_label_from_payload(i) for i in indicators]
+            rules_failed = [_label_from_payload(r) for r in rules_failed]
             high_risk_claims.append({
                 "claim_id": s.id_siniestro,
                 "claim_number": f"SIN-{s.id_siniestro}",
@@ -1823,7 +1824,8 @@ def get_fraud_intelligence(
     for s in siniestros:
         try:
             for ind in _json.loads(s.fraud_indicators or "[]"):
-                indicator_freq[ind] = indicator_freq.get(ind, 0) + 1
+                label = _label_from_payload(ind)
+                indicator_freq[label] = indicator_freq.get(label, 0) + 1
         except Exception:
             pass
 
@@ -2058,6 +2060,8 @@ def get_claim_workspace(
         rules_failed = _json.loads(siniestro.fraud_rules_failed or "[]")
     except Exception:
         rules_failed = []
+    indicators = [_label_from_payload(i) for i in indicators]
+    rules_failed = [_label_from_payload(r) for r in rules_failed]
 
     timeline = [
         {"event": "Ocurrencia", "date": siniestro.fecha_ocurrencia.isoformat() if siniestro.fecha_ocurrencia else None},

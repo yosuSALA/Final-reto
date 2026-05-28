@@ -38,4 +38,5 @@ export const state = {
 
     // Filtros globales
     includeTest: true,
+    workflowFocus: null,
 };

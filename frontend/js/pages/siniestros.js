@@ -17,6 +17,7 @@ export function renderSiniestrosView() {
             <h1>Siniestros</h1>
             <p>Siniestros reportados y su estado. Expanda cada fila para ver facturas y configurar destinatarios de notificación.</p>
         </div>
+        ${renderWorkflowContext()}
         <div class="card">
             <div class="card-header siniestros-toolbar">
                 <input class="filter-input" type="search" value="${state.claimsSearchTerm || ""}" placeholder="Buscar numero, placa, asegurado..." oninput="setClaimsSearch(this.value)">
@@ -94,6 +95,22 @@ export function renderSiniestrosView() {
     `;
 }
 
+function renderWorkflowContext() {
+    const focus = state.workflowFocus;
+    if (!focus || focus.page !== "siniestros") return "";
+    const chips = [focus.claim_number].filter(Boolean);
+    return `<div class="workflow-context-banner">
+        <div>
+            <strong>${focus.title || "Siniestro seleccionado desde Flujo"}</strong>
+            <span>${focus.detail || "Revisa la fila resaltada y sus facturas asociadas."}</span>
+        </div>
+        <div class="workflow-context-actions">
+            ${chips.map(chip => `<span class="workflow-chip">${chip}</span>`).join("")}
+            <button class="btn btn-ghost btn-sm" onclick="clearClaimsWorkflowFocus()">Cerrar</button>
+        </div>
+    </div>`;
+}
+
 function getVisibleClaims() {
     const q = (state.claimsSearchTerm || "").toLowerCase().trim();
     const filtered = state.claimsData.filter(c => {
@@ -146,10 +163,16 @@ export function setClaimsSort(value) {
     renderSiniestrosView();
 }
 
+export function clearClaimsWorkflowFocus() {
+    state.workflowFocus = null;
+    renderSiniestrosView();
+}
+
 function renderClaimRow(c) {
     const isExpanded = state.claimExpanded === c.id;
+    const isFocused = state.workflowFocus?.claim_id === c.id || state.workflowFocus?.claim_number === c.claim_number;
     const main = `
-        <tr style="cursor:pointer; ${isExpanded ? 'background:rgba(99,102,241,0.05);' : ''}" onclick="toggleClaimPreview(${c.id})">
+        <tr class="${isFocused ? "workflow-row-focus" : ""}" style="cursor:pointer; ${isExpanded ? 'background:rgba(99,102,241,0.05);' : ''}" onclick="toggleClaimPreview(${c.id})">
             <td><span style="display:inline-block; transition:transform 0.2s; transform:rotate(${isExpanded ? 90 : 0}deg); color:var(--accent-indigo); font-size:0.8rem;">▶</span></td>
             <td><strong>${c.claim_number}</strong></td>
             <td><span class="cat-tag cat-${c.claim_type.split('_')[0]}">${c.claim_type.replace(/_/g, ' ')}</span></td>

@@ -42,6 +42,8 @@ export function renderAuditoriasView() {
             </div>
         </div>
 
+        ${renderWorkflowContext()}
+
         <div class="tabs" style="display:flex; gap:16px; margin-bottom:16px; border-bottom:1px solid #e2e8f0;">
             <button class="btn btn-ghost"
                     style="${state.currentAuditTab === 'pendientes' ? 'border-bottom:2px solid var(--accent-indigo); color:var(--accent-indigo); font-weight:600;' : ''}"
@@ -68,6 +70,22 @@ export function renderAuditoriasView() {
     }
 }
 
+function renderWorkflowContext() {
+    const focus = state.workflowFocus;
+    if (!focus || focus.page !== "auditorias") return "";
+    const chips = [focus.invoice_number, focus.claim_number].filter(Boolean);
+    return `<div class="workflow-context-banner">
+        <div>
+            <strong>${focus.title || "Trabajo seleccionado desde Flujo"}</strong>
+            <span>${focus.detail || "Continua con el elemento pendiente resaltado en la tabla."}</span>
+        </div>
+        <div class="workflow-context-actions">
+            ${chips.map(chip => `<span class="workflow-chip">${chip}</span>`).join("")}
+            <button class="btn btn-ghost btn-sm" onclick="clearAuditWorkflowFocus()">Cerrar</button>
+        </div>
+    </div>`;
+}
+
 function renderPendingTable(data) {
     if (data.length === 0) return '<div class="empty-state"><h3>No hay facturas pendientes</h3></div>';
     return `
@@ -77,8 +95,10 @@ function renderPendingTable(data) {
                 <th>Taller</th><th>Monto</th><th>Acción</th>
             </tr></thead>
             <tbody>
-                ${data.map(i => `
-                    <tr class="clickable" onclick="location.hash='pending/${i.id}'" style="border-left: 4px solid var(--accent-warning)">
+                ${data.map(i => {
+                    const isFocused = sameWorkflowId(state.workflowFocus?.invoice_id, i.id) || state.workflowFocus?.invoice_number === i.invoice_number;
+                    return `
+                    <tr class="clickable ${isFocused ? "workflow-row-focus" : ""}" onclick="location.hash='pending/${i.id}'" style="border-left: 4px solid var(--accent-warning)">
                         <td><span style="color:var(--text-muted);font-family:var(--font-mono)">#${i.id}</span></td>
                         <td><strong>${i.invoice_number}</strong> ${renderTestBadge(i.is_test)}</td>
                         <td>${i.claim_number}</td>
@@ -87,7 +107,7 @@ function renderPendingTable(data) {
                         <td>$${(i.total || 0).toFixed(2)}</td>
                         <td><button class="btn btn-primary btn-sm">Auditar ahora</button></td>
                     </tr>
-                `).join("")}
+                `}).join("")}
             </tbody>
         </table>
     `;
@@ -105,8 +125,9 @@ function renderReviewedTable(data) {
             <tbody>
                 ${data.map(r => {
                     const bColor = r.status === 'approved' ? 'var(--accent-emerald)' : (r.status === 'rejected' ? 'var(--accent-rose)' : 'var(--accent-warning)');
+                    const isFocused = sameWorkflowId(state.workflowFocus?.audit_id, r.audit_id) || state.workflowFocus?.invoice_number === r.invoice_number;
                     return `
-                    <tr class="clickable" onclick="location.hash='audit/${r.audit_id}'" style="border-left: 4px solid ${bColor}">
+                    <tr class="clickable ${isFocused ? "workflow-row-focus" : ""}" onclick="location.hash='audit/${r.audit_id}'" style="border-left: 4px solid ${bColor}">
                         <td><span style="color:var(--text-muted);font-family:var(--font-mono)">#${r.audit_id}</span></td>
                         <td><strong>${r.invoice_number}</strong> ${renderTestBadge(r.is_test)}</td>
                         <td>${r.claim_number}</td>
@@ -147,4 +168,13 @@ export function setAuditTab(tab) {
 export function toggleAuditIncludeTest(checked) {
     state.includeTest = !!checked;
     loadAuditorias();
+}
+
+export function clearAuditWorkflowFocus() {
+    state.workflowFocus = null;
+    renderAuditoriasView();
+}
+
+function sameWorkflowId(a, b) {
+    return a !== undefined && a !== null && b !== undefined && b !== null && String(a) === String(b);
 }

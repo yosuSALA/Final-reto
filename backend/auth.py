@@ -7,7 +7,6 @@ El cliente no puede falsificar tokens de otros perfiles sin conocer su secret.
 import hmac
 import hashlib
 import secrets
-import os
 
 
 def new_token_secret() -> str:
@@ -52,10 +51,3 @@ def verify_profile_token(token: str, db):
     if hmac.compare_digest(expected, sig):
         return profile
     return None
-
-
-def verify_profile_access_password(password: str) -> bool:
-    expected = os.environ.get("PROFILE_ACCESS_PASSWORD", "")
-    if not expected:
-        return False
-    return hmac.compare_digest(str(password or ""), expected)

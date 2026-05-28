@@ -191,10 +191,8 @@ async function loadProfileList() {
 
 async function handleSelectProfile(profileId, profileName, roleHint) {
     showProfileError("");
-    const password = prompt(`Contraseña para acceder a ${profileName}:`);
-    if (password === null) return;
     try {
-        const data = await fetchProfileToken(profileId, password);
+        const data = await fetchProfileToken(profileId);
         const role = data.role || roleHint || detectRole(data.display_name || data.name);
         saveProfileSession(data.profile_id, data.display_name || data.name, data.token, role);
         dismissProfileSelector();
@@ -263,6 +261,21 @@ export function updateProfileBadge() {
         const roleInfo = getRoleLabel(state.currentRole);
         roleBadge.textContent = roleInfo.icon + " " + roleInfo.label;
         roleBadge.style.color = roleInfo.color;
+    }
+
+    const isDashboardRole = ["jefatura", "demo_jurado"].includes(state.currentRole);
+    const homeLink = document.getElementById("nav-dashboard");
+    const homeLabel = document.getElementById("nav-home-label");
+    const auditPanelLink = document.getElementById("nav-audit-panel");
+    if (homeLink && homeLabel) {
+        homeLink.dataset.page = isDashboardRole ? "dashboard" : "audit-panel";
+        homeLink.href = isDashboardRole ? "#dashboard" : "#audit-panel";
+        homeLabel.textContent = isDashboardRole ? "Dashboard" : "Flujo";
+    }
+    if (auditPanelLink) {
+        auditPanelLink.style.display = isDashboardRole ? "flex" : "none";
+        const textNode = Array.from(auditPanelLink.childNodes).find((node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim());
+        if (textNode) textNode.textContent = " Flujo";
     }
 }
 

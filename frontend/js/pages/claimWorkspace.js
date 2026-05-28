@@ -4,6 +4,14 @@ import { state } from "../state.js";
 
 let _activeTab = "summary";
 
+function labelFromPayload(value) {
+    if (typeof value === "string") return value;
+    if (value && typeof value === "object") {
+        return value.message || value.description || value.title || value.id || value.rule || value.indicator || JSON.stringify(value);
+    }
+    return String(value || "");
+}
+
 export async function loadClaimWorkspace(claimId) {
     const page = document.getElementById("page-claim-workspace");
     if (!page) return;
@@ -141,7 +149,7 @@ function renderSummary(data) {
             <div class="workspace-summary-card">
                 <h4>Indicadores de Fraude</h4>
                 ${claim.fraud_indicators?.length > 0
-                    ? claim.fraud_indicators.map(i => `<div class="intel-indicator-tag" style="margin-bottom:4px">${i}</div>`).join("")
+                    ? claim.fraud_indicators.map(i => `<div class="intel-indicator-tag" style="margin-bottom:4px">${labelFromPayload(i)}</div>`).join("")
                     : '<p style="color:var(--text-muted)">Sin indicadores</p>'}
             </div>
 
@@ -199,13 +207,13 @@ function renderFraudAnalysis(data) {
         ${claim.fraud_indicators?.length > 0 ? `
         <h4 style="margin:16px 0 8px">Indicadores Detectados</h4>
         <div class="workspace-indicators-list">
-            ${claim.fraud_indicators.map(i => `<div class="intel-indicator-full"><span class="intel-ind-bullet">⚠</span>${i}</div>`).join("")}
+            ${claim.fraud_indicators.map(i => `<div class="intel-indicator-full"><span class="intel-ind-bullet">⚠</span>${labelFromPayload(i)}</div>`).join("")}
         </div>` : ""}
 
         ${claim.rules_failed?.length > 0 ? `
         <h4 style="margin:16px 0 8px">Reglas Incumplidas</h4>
         <div class="workspace-rules-list">
-            ${claim.rules_failed.map(r => `<div class="workspace-rule-fail"><span>✗</span><span>${r}</span></div>`).join("")}
+            ${claim.rules_failed.map(r => `<div class="workspace-rule-fail"><span>✗</span><span>${labelFromPayload(r)}</span></div>`).join("")}
         </div>` : ""}
 
         ${findings.length > 0 ? `

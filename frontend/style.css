@@ -6,7 +6,7 @@
 /* ── CSS Variables ───────────────────────────────────── */
 :root {
     /* Colors */
-    --bg-primary: #f4f8fc;
+    --bg-primary: #f5f7fa;
     --bg-secondary: #ffffff;
     --bg-tertiary: #f1f5f9;
     --bg-card: rgba(255, 255, 255, 0.9);
@@ -64,7 +64,7 @@
     --radius-lg: 0px;
     --radius-xl: 0px;
     /* TYPOGRAPHY (REPLACE THIS SECTION ONLY) */
-    --font-sans: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    --font-sans: Frutiger, 'Frutiger LT Std', 'Avenir Next', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     --font-heading: Frutiger, 'Frutiger LT Std', 'Avenir Next', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 
     /* add these */
@@ -99,8 +99,17 @@ body {
     line-height: 1.6;
 }
 
+strong, b, th, button, input, select, textarea {
+    font-family: var(--font-sans);
+}
+
+strong, b {
+    font-weight: 650;
+    letter-spacing: 0;
+}
+
 body::before {
-    content: '';
+    content: none;
     position: fixed;
     top: 0;
     left: 0;
@@ -784,7 +793,7 @@ body::before {
 .kpi-value {
     font-size: 2rem;
     font-weight: 800;
-    letter-spacing: -0.03em;
+    letter-spacing: 0;
     font-variant-numeric: tabular-nums;
 }
 
@@ -825,7 +834,7 @@ body::before {
 .card-header h2 {
     font-size: 1rem;
     font-weight: 700;
-    letter-spacing: -0.01em;
+    letter-spacing: 0;
 }
 
 .card-body {
@@ -1097,7 +1106,7 @@ tbody tr.clickable {
 .detail-info h1 {
     font-size: 1.5rem;
     font-weight: 800;
-    letter-spacing: -0.03em;
+    letter-spacing: 0;
     margin-bottom: 6px;
 }
 
@@ -1277,27 +1286,50 @@ tbody tr.clickable {
 #profile-selector-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.75);
-    backdrop-filter: blur(8px);
+    background: var(--bg-primary);
     z-index: 9999;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display: grid;
+    grid-template-columns: minmax(280px, 0.9fr) minmax(360px, 1.4fr);
+    align-items: stretch;
+    justify-content: stretch;
     animation: fadeIn 0.2s ease;
+    overflow: auto;
 }
 
 .profile-modal {
-    background: var(--bg-card, #1a1a2e);
-    border: 1px solid var(--border-color, rgba(255,255,255,0.1));
-    border-radius: 20px;
-    padding: 36px 32px;
+    background: var(--bg-secondary);
+    border-left: 1px solid var(--border-primary);
+    padding: clamp(28px, 5vw, 64px);
     width: 100%;
-    max-width: 460px;
-    max-height: min(720px, calc(100vh - 32px));
+    max-width: none;
+    min-height: 100vh;
+    max-height: none;
     overflow-y: auto;
     overscroll-behavior: contain;
-    box-shadow: 0 24px 64px rgba(0,0,0,0.5);
-    animation: slideUp 0.25s cubic-bezier(0.34,1.56,0.64,1);
+    box-shadow: none;
+    animation: none;
+    grid-column: 2;
+}
+
+#profile-selector-overlay::before {
+    content: "Aseguradora del Sur\A Inteligencia de Siniestros";
+    white-space: pre-line;
+    display: flex;
+    align-items: flex-end;
+    padding: clamp(28px, 5vw, 64px);
+    color: #fff;
+    font-family: var(--font-heading);
+    font-size: clamp(2rem, 4vw, 4.4rem);
+    font-weight: 700;
+    line-height: 1.05;
+    background:
+        linear-gradient(0deg, rgba(7, 20, 38, 0.78), rgba(7, 20, 38, 0.2)),
+        url("/logo/logo.png"),
+        linear-gradient(135deg, #0b63ce, #0e7490);
+    background-repeat: no-repeat;
+    background-position: center, center 38%, center;
+    background-size: cover, min(220px, 42%), cover;
+    grid-column: 1;
 }
 
 @keyframes slideUp {
@@ -1305,18 +1337,18 @@ tbody tr.clickable {
     to   { transform: translateY(0);    opacity: 1; }
 }
 
-.profile-modal-header { text-align: center; margin-bottom: 28px; }
-.profile-modal-logo { display: flex; justify-content: center; margin-bottom: 12px; }
-.profile-modal-header h2 { font-size: 1.35rem; font-weight: 700; color: var(--text-primary, #fff); margin: 0 0 6px; }
-.profile-modal-sub { color: var(--text-muted, #888); font-size: 0.88rem; margin: 0; }
+.profile-modal-header { text-align: left; margin-bottom: 32px; }
+.profile-modal-logo { display: flex; justify-content: flex-start; margin-bottom: 16px; }
+.profile-modal-header h2 { font-family: var(--font-heading); font-size: clamp(1.65rem, 2.4vw, 2.6rem); font-weight: 700; color: var(--text-primary, #fff); margin: 0 0 8px; letter-spacing: 0; }
+.profile-modal-sub { color: var(--text-secondary, #888); font-size: 1rem; margin: 0; max-width: 560px; }
 
 .profile-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    max-height: 260px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 10px;
+    max-height: none;
     overflow-y: auto;
-    margin-bottom: 4px;
+    margin-bottom: 8px;
 }
 
 .profile-loading, .profile-empty {
@@ -1330,10 +1362,9 @@ tbody tr.clickable {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 12px 14px;
-    border-radius: 12px;
-    background: var(--bg-elevated, rgba(255,255,255,0.04));
-    border: 1px solid var(--border-color, rgba(255,255,255,0.08));
+    padding: 16px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-primary);
     cursor: pointer;
     transition: all 0.15s ease;
     text-align: left;
@@ -1343,9 +1374,9 @@ tbody tr.clickable {
 }
 
 .profile-item:hover {
-    background: rgba(99,102,241,0.15);
-    border-color: #6366f1;
-    transform: translateX(2px);
+    background: var(--bg-card-hover);
+    border-color: var(--accent-indigo);
+    transform: none;
 }
 
 .profile-avatar {
@@ -1383,11 +1414,11 @@ tbody tr.clickable {
     background: var(--border-color, rgba(255,255,255,0.1));
 }
 
-.profile-create-form { display: flex; gap: 8px; flex-wrap: wrap; }
+.profile-create-form { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(180px, 240px) auto; gap: 8px; align-items: stretch; }
 
 .profile-name-input {
     flex: 1 1 180px;
-    padding: 10px 14px;
+    padding: 11px 14px;
     border-radius: 10px;
     border: 1px solid var(--border-color, rgba(255,255,255,0.12));
     background: var(--bg-elevated, rgba(255,255,255,0.06));
@@ -1682,6 +1713,436 @@ tbody tr.clickable {
 
 input[type="checkbox"] {
     accent-color: var(--accent-indigo);
+}
+
+.audit-value-strip {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.audit-value-strip > div {
+    background: var(--bg-card);
+    border: 1px solid var(--border-primary);
+    padding: 14px 16px;
+}
+
+.audit-value-strip strong,
+.audit-value-strip span {
+    display: block;
+}
+
+.audit-value-strip strong {
+    color: var(--text-primary);
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    font-weight: 700;
+}
+
+.audit-value-strip span {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-top: 4px;
+}
+
+.audit-workflow {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.audit-step {
+    display: grid;
+    grid-template-columns: 42px minmax(220px, 1.15fr) minmax(170px, 0.7fr) minmax(140px, 0.48fr) minmax(120px, 0.42fr) 112px 116px;
+    align-items: stretch;
+    gap: 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-primary);
+    padding: 12px;
+    min-height: 70px;
+}
+
+.audit-step-index {
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    background: rgba(11, 99, 206, 0.12);
+    color: var(--accent-indigo);
+    font-weight: 800;
+    align-self: center;
+}
+
+.audit-step-title,
+.audit-step-subject,
+.audit-step-owner,
+.audit-step-time {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+
+.audit-step h3 {
+    font-family: var(--font-heading);
+    font-size: 0.98rem;
+    margin: 0;
+    letter-spacing: 0;
+    line-height: 1.25;
+}
+
+.audit-step-owner,
+.audit-step-subject,
+.audit-step-time {
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    line-height: 1.25;
+}
+
+.audit-step-subject {
+    color: var(--text-secondary);
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+.audit-status {
+    border: 1px solid var(--border-primary);
+    padding: 3px 8px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    white-space: nowrap;
+    text-transform: uppercase;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    align-self: center;
+    min-height: 28px;
+}
+
+.audit-step > .btn {
+    align-self: center;
+    justify-content: center;
+    min-width: 104px;
+}
+
+.audit-status.completado { color: var(--accent-emerald); background: rgba(5, 150, 105, 0.1); }
+.audit-status.en-curso { color: var(--accent-amber); background: rgba(217, 119, 6, 0.1); }
+.audit-status.pendiente { color: var(--text-muted); background: var(--bg-glass); }
+
+.audit-actions-grid {
+    display: grid;
+    gap: 8px;
+}
+
+.audit-action {
+    text-align: left;
+    border: 1px solid var(--border-primary);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    padding: 12px;
+    cursor: pointer;
+    font-family: var(--font-sans);
+}
+
+.audit-action span {
+    display: block;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    margin-top: 3px;
+}
+
+.audit-alert-row {
+    display: flex;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border-primary);
+    padding: 8px 0;
+}
+
+.audit-alert-row strong {
+    color: var(--accent-indigo);
+    font-size: 1.2rem;
+}
+
+.audit-alert-row span {
+    color: var(--text-secondary);
+}
+
+.audit-alert-tags {
+    margin-top: 12px;
+}
+
+.audit-guide {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr auto;
+    gap: 14px;
+    align-items: center;
+    border: 1px solid rgba(11, 99, 206, 0.25);
+    background: rgba(11, 99, 206, 0.08);
+    padding: 14px 16px;
+    margin-bottom: 16px;
+}
+
+.audit-guide p {
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+    margin-top: 4px;
+}
+
+.audit-guide-steps {
+    display: grid;
+    gap: 4px;
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+}
+
+.audit-guide-restore {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 10px;
+}
+
+.audit-next-work,
+.workflow-context-banner,
+.game-tutorial {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    border: 1px solid rgba(11, 99, 206, 0.28);
+    background: linear-gradient(180deg, rgba(236, 248, 255, 0.9), rgba(219, 239, 252, 0.72));
+    padding: 12px 14px;
+    margin-bottom: 14px;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.8) inset, 0 10px 24px rgba(11, 99, 206, 0.08);
+}
+
+[data-theme="dark"] .audit-next-work,
+[data-theme="dark"] .workflow-context-banner,
+[data-theme="dark"] .game-tutorial {
+    background: linear-gradient(180deg, rgba(20, 52, 82, 0.88), rgba(10, 35, 62, 0.78));
+}
+
+.audit-next-work > div,
+.workflow-context-banner > div:first-child,
+.tutorial-copy {
+    min-width: 0;
+}
+
+.audit-next-work strong,
+.workflow-context-banner strong,
+.tutorial-copy strong {
+    display: block;
+    color: var(--text-primary);
+    font-size: 0.82rem;
+    text-transform: uppercase;
+}
+
+.audit-next-work span,
+.workflow-context-banner span,
+.tutorial-copy p,
+.tutorial-copy span {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin: 3px 0 0;
+}
+
+.workflow-context-actions,
+.tutorial-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.workflow-chip,
+.tutorial-step-badge {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 4px 9px;
+    border: 1px solid rgba(11, 99, 206, 0.24);
+    background: rgba(255,255,255,0.58);
+    color: var(--accent-indigo);
+    font-weight: 800;
+    font-size: 0.78rem;
+    white-space: nowrap;
+}
+
+[data-theme="dark"] .workflow-chip,
+[data-theme="dark"] .tutorial-step-badge {
+    background: rgba(255,255,255,0.08);
+}
+
+.workflow-row-focus {
+    outline: 2px solid rgba(11, 99, 206, 0.48);
+    outline-offset: -2px;
+    background: rgba(11, 99, 206, 0.08) !important;
+}
+
+.audit-panel-shell[class*="guide-step-"] .audit-step {
+    opacity: 0.38;
+    filter: saturate(0.65);
+}
+
+.audit-panel-shell.guide-step-1 .audit-step:nth-child(1),
+.audit-panel-shell.guide-step-2 .audit-step:nth-child(2),
+.audit-panel-shell.guide-step-3 .audit-step:nth-child(3),
+.audit-panel-shell.guide-step-4 .audit-step:nth-child(4),
+.audit-panel-shell.guide-step-5 .audit-step:nth-child(5) {
+    opacity: 1;
+    filter: none;
+    border-color: rgba(11, 99, 206, 0.58);
+    box-shadow: 0 0 0 3px rgba(11, 99, 206, 0.14), 0 1px 0 rgba(255,255,255,0.7) inset;
+}
+
+@media (max-width: 900px) {
+    #profile-selector-overlay {
+        grid-template-columns: 1fr;
+    }
+
+    #profile-selector-overlay::before {
+        min-height: 220px;
+        grid-column: 1;
+        background-size: cover, 140px, cover;
+    }
+
+    .profile-modal {
+        grid-column: 1;
+        min-height: auto;
+    }
+
+    .profile-create-form {
+        grid-template-columns: 1fr;
+    }
+
+    .audit-value-strip,
+    .audit-guide,
+    .audit-next-work,
+    .workflow-context-banner,
+    .game-tutorial {
+        grid-template-columns: 1fr;
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .audit-step {
+        grid-template-columns: 36px 1fr;
+    }
+
+    .audit-step-title,
+    .audit-step-subject,
+    .audit-step-owner,
+    .audit-step-time,
+    .audit-status {
+        grid-column: 2;
+        justify-content: flex-start;
+    }
+
+    .audit-step .btn {
+        grid-column: 1 / -1;
+        justify-content: center;
+    }
+}
+
+/* Professional Frutiger Aero layer */
+html {
+    background: var(--bg-primary);
+}
+
+body {
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(245, 247, 250, 0.92)),
+        linear-gradient(135deg, rgba(184, 218, 244, 0.45), rgba(255, 255, 255, 0) 42%),
+        var(--bg-primary);
+}
+
+[data-theme="dark"] body {
+    background:
+        linear-gradient(180deg, rgba(8, 22, 39, 0.9), rgba(7, 20, 38, 0.98)),
+        linear-gradient(135deg, rgba(14, 116, 144, 0.18), rgba(7, 20, 38, 0) 46%),
+        var(--bg-primary);
+}
+
+.nav {
+    background: color-mix(in srgb, var(--bg-secondary) 82%, transparent);
+    box-shadow: 0 1px 0 rgba(255,255,255,0.4) inset, 0 8px 24px rgba(15, 23, 42, 0.06);
+}
+
+.card,
+.intel-card,
+.audit-step,
+.audit-value-strip > div,
+.audit-action,
+.profile-modal {
+    background: color-mix(in srgb, var(--bg-secondary) 86%, transparent);
+    border-color: color-mix(in srgb, var(--border-primary) 72%, rgba(255,255,255,0.35));
+    box-shadow: 0 1px 0 rgba(255,255,255,0.55) inset, 0 12px 26px rgba(15, 23, 42, 0.05);
+}
+
+[data-theme="dark"] .card,
+[data-theme="dark"] .intel-card,
+[data-theme="dark"] .audit-step,
+[data-theme="dark"] .audit-value-strip > div,
+[data-theme="dark"] .audit-action,
+[data-theme="dark"] .profile-modal {
+    background: rgba(15, 34, 56, 0.74);
+    box-shadow: 0 1px 0 rgba(255,255,255,0.08) inset, 0 16px 30px rgba(0, 0, 0, 0.18);
+}
+
+.btn-primary {
+    background: linear-gradient(180deg, #1875d1, #0b63ce);
+    box-shadow: 0 1px 0 rgba(255,255,255,0.35) inset, 0 8px 18px rgba(11, 99, 206, 0.18);
+}
+
+.btn-primary:hover {
+    transform: none;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.35) inset, 0 10px 22px rgba(11, 99, 206, 0.22);
+}
+
+.nav-badge,
+.intel-role-badge,
+.audit-status,
+.badge {
+    letter-spacing: 0;
+}
+
+.audit-workflow {
+    border-top: 1px solid var(--border-primary);
+    padding-top: 10px;
+}
+
+.audit-step {
+    box-shadow: 0 1px 0 rgba(255,255,255,0.52) inset;
+}
+
+.audit-step-title,
+.audit-step-subject,
+.audit-step-owner,
+.audit-step-time,
+.audit-status,
+.audit-step > .btn {
+    min-height: 36px;
+}
+
+.audit-step-owner,
+.audit-step-subject,
+.audit-step-time {
+    border-left: 1px solid var(--border-primary);
+    padding-left: 12px;
+}
+
+table {
+    border-spacing: 0;
+}
+
+thead th {
+    color: var(--text-secondary);
+    background: color-mix(in srgb, var(--bg-tertiary) 76%, transparent);
+    letter-spacing: 0;
+}
+
+tbody td {
+    line-height: 1.35;
 }
 
 /* ── Score distribution bar ─────────────────────────────── */

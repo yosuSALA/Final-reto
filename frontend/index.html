@@ -26,7 +26,11 @@
         <div class="nav-links">
             <a href="#dashboard" class="nav-link active" data-page="dashboard" id="nav-dashboard">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-                Inicio
+                <span id="nav-home-label">Dashboard</span>
+            </a>
+            <a href="#audit-panel" class="nav-link" data-page="audit-panel" id="nav-audit-panel">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                Panel Auditoría
             </a>
             <a href="#siniestros" class="nav-link" data-page="siniestros" id="nav-siniestros">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
@@ -66,6 +70,7 @@
     <!-- MAIN CONTENT -->
     <main class="main" id="main-content">
         <div class="page active" id="page-dashboard"></div>
+        <div class="page" id="page-audit-panel"></div>
         <div class="page" id="page-auditorias"></div>
         <div class="page" id="page-tarifario"></div>
         <div class="page" id="page-siniestros"></div>

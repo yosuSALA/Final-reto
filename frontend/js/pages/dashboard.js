@@ -16,16 +16,23 @@ export async function loadDashboard() {
     try {
         switch (role) {
             case "demo_jurado":  await renderDemoJurado(page, perms); break;
-            case "analista":     await renderAnalista(page, perms); break;
-            case "antifraude":   await renderAntifraude(page, perms); break;
+            case "analista":     await renderActionFlowPanel(page, perms); break;
+            case "antifraude":   await renderActionFlowPanel(page, perms); break;
             case "jefatura":     await renderJefatura(page, perms); break;
-            case "auditoria":    await renderAuditoria(page, perms); break;
-            default:             await renderAnalista(page, perms);
+            case "auditoria":    await renderActionFlowPanel(page, perms); break;
+            default:             await renderActionFlowPanel(page, perms);
         }
     } catch (e) {
         console.error("Dashboard error:", e);
         page.innerHTML = `<div class="intel-error"><h3>Error cargando la plataforma</h3><p>${e.message}</p><button class="btn btn-primary" onclick="loadDashboard()">Reintentar</button></div>`;
     }
+}
+
+export async function loadAuditPanel(forceGuide = false) {
+    const page = document.getElementById("page-audit-panel") || document.getElementById("page-dashboard");
+    if (!page) return;
+    page.innerHTML = `<div class="intel-loading"><div class="intel-spinner"></div><p>Cargando panel de auditoría...</p></div>`;
+    await renderActionFlowPanel(page, getPermissions(), { forceGuide });
 }
 
 export async function runFullAudit() {
@@ -358,7 +365,7 @@ async function renderAntifraude(page, perms) {
                                 <td>${renderFraudScoreBadge(c.fraud_score, c.fraud_classification)}</td>
                                 <td>
                                     <div class="intel-indicators">
-                                        ${(c.indicators || []).slice(0, 2).map(i => `<span class="intel-indicator-tag">${truncate(i, 20)}</span>`).join("")}
+                                        ${(c.indicators || []).slice(0, 2).map(i => `<span class="intel-indicator-tag">${truncate(labelFromPayload(i), 20)}</span>`).join("")}
                                     </div>
                                 </td>
                                 <td>$${fmt(c.amount_claimed)}</td>
@@ -749,7 +756,7 @@ function renderIndicatorBars(indicators) {
     const maxCount = Math.max(...indicators.map(i => i.count), 1);
     return indicators.slice(0, 10).map(ind => `
     <div class="intel-indicator-row">
-        <span class="intel-indicator-name">${truncate(ind.indicator, 30)}</span>
+        <span class="intel-indicator-name">${truncate(labelFromPayload(ind.indicator), 30)}</span>
         <div class="intel-indicator-bar-wrap">
             <div class="intel-indicator-bar" style="width:${Math.round(ind.count/maxCount*100)}%"></div>
         </div>
@@ -979,3 +986,225 @@ const iconCheck = () => svgIcon('<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><
 const iconWarn = () => svgIcon('<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>');
 const iconNetwork = () => svgIcon('<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>');
 const iconRepeat = () => svgIcon('<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>');
+
+// Overrides for the actionable workflow panel. Kept near the end so these
+// definitions are the active ones while preserving the existing dashboards.
+async function renderActionFlowPanel(page, perms, options = {}) {
+    const include = state.includeTest ? 1 : 0;
+    const [ops, fraud, dash, pendingInvoices, auditResults] = await Promise.all([
+        apiFetch("/intelligence/operations"),
+        apiFetch("/intelligence/fraud"),
+        apiFetch("/dashboard?include_test=0"),
+        apiFetch(`/invoices/pending?include_test=${include}`),
+        apiFetch(`/audit-results?include_test=${include}`),
+    ]);
+    const role = state.currentRole || "analista";
+    const guideStep = Number(localStorage.getItem("auditPanelGuideStep") || "1");
+    const showGuide = role === "demo_jurado" && (options.forceGuide || localStorage.getItem("auditPanelGuideHidden") !== "1");
+    const workflow = buildActionWorkflow(ops || {}, fraud || {}, dash || {}, pendingInvoices || [], auditResults || []);
+
+    page.innerHTML = `<div class="audit-panel-shell ${showGuide ? `guide-step-${guideStep}` : ""}">
+        ${roleHeader(role, "Panel de Auditoría de Siniestros", "Registro, facturas, fraude, aprobación conjunta y cálculo del monto a cubrir")}
+        ${showGuide ? renderGameTutorialGuide(guideStep, workflow) : role === "demo_jurado" ? `<div class="audit-guide-restore"><button class="btn btn-ghost btn-sm" onclick="reactivateAuditGuide()">Reactivar guía</button></div>` : ""}
+        <div class="audit-value-strip">
+            <div><strong>Propósito</strong><span>Trazabilidad entre Analista, Antifraude, Contabilidad y Auditoría para reducir pérdidas y acelerar cierres.</span></div>
+            <div><strong>Monto estimado a cubrir</strong><span>$${fmt(((dash || {}).invoice_total_sum || 0) - ((dash || {}).total_overcharge || 0))}</span></div>
+            <div><strong>Control activo</strong><span>${(fraud || {}).total_high_risk ?? 0} alto riesgo · ${(ops || {}).audit_queue?.pending ?? 0} facturas pendientes</span></div>
+        </div>
+        ${renderNextWorkStrip(workflow)}
+        <div class="audit-workflow">${workflow.map(step => renderActionWorkflowStep(step, role)).join("")}</div>
+        <div class="intel-grid-2">
+            <div class="card"><div class="card-header"><h2>Trabajo del Perfil Actual</h2></div><div class="card-body audit-actions-grid">${renderRoleActions(role, ops || {})}</div></div>
+            <div class="card"><div class="card-header"><h2>Alertas de Auditoría</h2></div><div class="card-body">${renderAuditAlerts(fraud || {}, ops || {})}</div></div>
+        </div>
+    </div>`;
+}
+
+function buildActionWorkflow(ops, fraud, dash, pendingInvoices = [], auditResults = []) {
+    const pending = ops.audit_queue?.pending ?? 0;
+    const completed = ops.audit_queue?.completed ?? 0;
+    const escalated = ops.audit_queue?.escalated ?? 0;
+    const highRisk = fraud.total_high_risk ?? 0;
+    const totalClaims = dash.total_claims ?? ops.claims_queue?.length ?? 0;
+    const pendingInvoice = pendingInvoices[0] || null;
+    const highRiskClaim = (fraud.high_risk_claims || [])[0] || (ops.claims_queue || []).find(c => (c.fraud_score || 0) >= 40) || null;
+    const escalatedAudit = auditResults.find(a => a.status === "escalated" || a.status === "in_progress") || auditResults[0] || null;
+    const finalAudit = auditResults.find(a => a.status === "approved" || a.status === "completed") || auditResults[0] || null;
+    const now = new Date();
+    const stamp = (mins) => new Date(now.getTime() - mins * 60000).toLocaleString("es-EC", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+
+    return [
+        { n: 1, title: "Registrar nuevo siniestro", owner: "Analista", status: totalClaims > 0 ? "completado" : "pendiente", time: stamp(80), action: "Cargar", subject: "Nuevo expediente", focus: { page: "upload", title: "Registrar nuevo siniestro", detail: "Crea o carga la documentación inicial del expediente." } },
+        { n: 2, title: "Agregar facturas al siniestro", owner: "Analista / Taller", status: pending > 0 ? "en curso" : completed > 0 ? "completado" : "pendiente", time: stamp(62), action: "Ver facturas", subject: pendingInvoice ? `${pendingInvoice.invoice_number} · ${pendingInvoice.claim_number}` : "Sin facturas pendientes", focus: { page: "auditorias", tab: "pendientes", search: pendingInvoice?.invoice_number || "", invoice_id: pendingInvoice?.id, invoice_number: pendingInvoice?.invoice_number, claim_number: pendingInvoice?.claim_number, title: "Factura pendiente a auditar", detail: pendingInvoice ? `Revisa ${pendingInvoice.invoice_number} asociada a ${pendingInvoice.claim_number}.` : "No hay facturas pendientes en cola." } },
+        { n: 3, title: "Cuantificar daños y detectar fraude", owner: "Antifraude", status: highRisk > 0 || completed > 0 ? "en curso" : "pendiente", time: stamp(38), action: "Investigar", subject: highRiskClaim ? `${highRiskClaim.claim_number} · score ${Math.round(highRiskClaim.fraud_score || 0)}` : "Sin alertas activas", focus: { page: "siniestros", search: highRiskClaim?.claim_number || "", claim_id: highRiskClaim?.claim_id || highRiskClaim?.id, claim_number: highRiskClaim?.claim_number, title: "Siniestro prioritario", detail: highRiskClaim ? `Cuantifica daños y revisa indicadores de ${highRiskClaim.claim_number}.` : "No hay siniestros de alto riesgo pendientes." } },
+        { n: 4, title: "Aprobación conjunta del siniestro", owner: "Fraude + Contabilidad", status: escalated > 0 ? "en curso" : completed > 0 ? "completado" : "pendiente", time: stamp(20), action: "Revisar", subject: escalatedAudit ? `${escalatedAudit.invoice_number} · ${escalatedAudit.claim_number}` : "Sin aprobaciones abiertas", focus: { page: "auditorias", tab: "revisadas", search: escalatedAudit?.invoice_number || "", audit_id: escalatedAudit?.audit_id, invoice_number: escalatedAudit?.invoice_number, claim_number: escalatedAudit?.claim_number, title: "Aprobación conjunta pendiente", detail: escalatedAudit ? `Valida hallazgos y monto de ${escalatedAudit.invoice_number}.` : "No hay casos escalados para aprobación conjunta." } },
+        { n: 5, title: "Verificación final del siniestro", owner: "Auditoría", status: completed > 0 && pending === 0 ? "completado" : "pendiente", time: stamp(6), action: "Verificar", subject: finalAudit ? `${finalAudit.invoice_number} · cubrir $${fmt((finalAudit.invoice_total || 0) - (finalAudit.total_overcharge || 0))}` : "Sin verificaciones listas", focus: { page: "auditorias", tab: "revisadas", search: finalAudit?.invoice_number || "", audit_id: finalAudit?.audit_id, invoice_number: finalAudit?.invoice_number, claim_number: finalAudit?.claim_number, title: "Verificación final", detail: finalAudit ? `Confirma el monto a cubrir de ${finalAudit.invoice_number}.` : "No hay verificaciones finales listas." } },
+    ];
+}
+
+function renderNextWorkStrip(workflow) {
+    const next = workflow.find(s => s.status !== "completado") || workflow[workflow.length - 1];
+    return `<div class="audit-next-work">
+        <div><strong>Siguiente pendiente</strong><span>${next.title}</span></div>
+        <div><strong>Elemento</strong><span>${next.subject}</span></div>
+        <button class="btn btn-primary btn-sm" onclick="openWorkflowTarget('${encodeURIComponent(JSON.stringify(next.focus))}')">Abrir trabajo</button>
+    </div>`;
+}
+
+function renderActionWorkflowStep(step, role) {
+    const canAct = roleCanActOnStep(role, step.n);
+    const statusClass = step.status.replace(" ", "-");
+    return `<div class="audit-step ${statusClass}">
+        <div class="audit-step-index">${step.n}</div>
+        <div class="audit-step-title"><h3>${step.title}</h3></div>
+        <div class="audit-step-subject">${step.subject}</div>
+        <div class="audit-step-owner">${step.owner}</div>
+        <div class="audit-step-time">${step.time}</div>
+        <span class="audit-status ${statusClass}">${step.status}</span>
+        <button class="btn ${canAct ? "btn-primary" : "btn-ghost"} btn-sm" ${canAct ? `onclick="openWorkflowTarget('${encodeURIComponent(JSON.stringify(step.focus))}')"` : "disabled"}>${step.action}</button>
+    </div>`;
+}
+
+function renderGameTutorialGuide(step, workflow) {
+    const current = workflow[Math.max(0, Math.min(step - 1, workflow.length - 1))];
+    return `<div class="game-tutorial">
+        <div class="tutorial-step-badge">Tutorial ${step}/5</div>
+        <div class="tutorial-copy">
+            <strong>${current.title}</strong>
+            <p>${current.focus.detail}</p>
+            <span>Botón objetivo: ${current.action}</span>
+        </div>
+        <div class="tutorial-controls">
+            <button class="btn btn-ghost btn-sm" onclick="prevDemoGuide()" ${step <= 1 ? "disabled" : ""}>Anterior</button>
+            <button class="btn btn-primary btn-sm" onclick="${step >= 5 ? "skipAuditGuide()" : "nextDemoGuide()"}">${step >= 5 ? "Terminar" : "Siguiente"}</button>
+            <button class="btn btn-ghost btn-sm" onclick="skipAuditGuide()">Saltar</button>
+        </div>
+    </div>`;
+}
+
+export function openWorkflowTarget(encodedFocus) {
+    let focus = {};
+    try { focus = JSON.parse(decodeURIComponent(encodedFocus)); } catch (e) { focus = {}; }
+    state.workflowFocus = focus;
+    if (focus.page === "auditorias") {
+        state.currentAuditTab = focus.tab || "pendientes";
+        state.auditSearchTerm = focus.search || "";
+    }
+    if (focus.page === "siniestros") {
+        state.claimsSearchTerm = focus.search || "";
+        state.claimExpanded = focus.claim_id || null;
+    }
+    if (typeof window.navigateTo === "function") window.navigateTo(focus.page || "audit-panel");
+}
+
+export function nextDemoGuide() {
+    const step = Math.min(5, Number(localStorage.getItem("auditPanelGuideStep") || "1") + 1);
+    localStorage.setItem("auditPanelGuideStep", String(step));
+    loadAuditPanel(true);
+}
+
+export function prevDemoGuide() {
+    const step = Math.max(1, Number(localStorage.getItem("auditPanelGuideStep") || "1") - 1);
+    localStorage.setItem("auditPanelGuideStep", String(step));
+    loadAuditPanel(true);
+}
+
+function labelFromPayload(value) {
+    if (typeof value === "string") return value;
+    if (value && typeof value === "object") {
+        return value.message || value.description || value.title || value.id || value.rule || value.indicator || JSON.stringify(value);
+    }
+    return String(value || "");
+}
+
+async function renderAuditPanel(page, perms, options = {}) {
+    const [ops, fraud, dash] = await Promise.all([
+        apiFetch("/intelligence/operations"),
+        apiFetch("/intelligence/fraud"),
+        apiFetch("/dashboard?include_test=0"),
+    ]);
+    const role = state.currentRole || "analista";
+    const showGuide = role === "demo_jurado" && (options.forceGuide || localStorage.getItem("auditPanelGuideHidden") !== "1");
+    const workflow = buildWorkflow(ops || {}, fraud || {}, dash || {});
+    page.innerHTML = `
+        ${roleHeader(role, "Panel de Auditoría de Siniestros", "Registro, facturas, fraude, aprobación conjunta y cálculo del monto a cubrir")}
+        ${showGuide ? renderAuditPanelGuide() : role === "demo_jurado" ? `<div class="audit-guide-restore"><button class="btn btn-ghost btn-sm" onclick="reactivateAuditGuide()">Reactivar guía</button></div>` : ""}
+        <div class="audit-value-strip">
+            <div><strong>Propósito</strong><span>Trazabilidad entre Analista, Antifraude, Contabilidad y Auditoría para reducir pérdidas y acelerar cierres.</span></div>
+            <div><strong>Monto estimado a cubrir</strong><span>$${fmt(((dash || {}).invoice_total_sum || 0) - ((dash || {}).total_overcharge || 0))}</span></div>
+            <div><strong>Control activo</strong><span>${(fraud || {}).total_high_risk ?? 0} alto riesgo · ${(ops || {}).audit_queue?.pending ?? 0} facturas pendientes</span></div>
+        </div>
+        <div class="audit-workflow">${workflow.map(step => renderWorkflowStep(step, role)).join("")}</div>
+        <div class="intel-grid-2">
+            <div class="card"><div class="card-header"><h2>Trabajo del Perfil Actual</h2></div><div class="card-body audit-actions-grid">${renderRoleActions(role, ops || {})}</div></div>
+            <div class="card"><div class="card-header"><h2>Alertas de Auditoría</h2></div><div class="card-body">${renderAuditAlerts(fraud || {}, ops || {})}</div></div>
+        </div>`;
+}
+
+function buildWorkflow(ops, fraud, dash) {
+    const pending = ops.audit_queue?.pending ?? 0;
+    const completed = ops.audit_queue?.completed ?? 0;
+    const escalated = ops.audit_queue?.escalated ?? 0;
+    const highRisk = fraud.total_high_risk ?? 0;
+    const totalClaims = dash.total_claims ?? ops.claims_queue?.length ?? 0;
+    const now = new Date();
+    const stamp = (mins) => new Date(now.getTime() - mins * 60000).toLocaleString("es-EC", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+    return [
+        { n: 1, title: "Registrar nuevo siniestro", owner: "Analista", status: totalClaims > 0 ? "completado" : "pendiente", time: stamp(80), action: "Cargar", target: "upload" },
+        { n: 2, title: "Agregar facturas al siniestro", owner: "Analista / Taller", status: pending > 0 ? "en curso" : completed > 0 ? "completado" : "pendiente", time: stamp(62), action: "Ver facturas", target: "auditorias" },
+        { n: 3, title: "Cuantificar daños y detectar fraude", owner: "Antifraude", status: highRisk > 0 || completed > 0 ? "en curso" : "pendiente", time: stamp(38), action: "Investigar", target: "siniestros" },
+        { n: 4, title: "Aprobación conjunta del siniestro", owner: "Analista de fraude + Contabilidad", status: escalated > 0 ? "en curso" : completed > 0 ? "completado" : "pendiente", time: stamp(20), action: "Revisar", target: "auditorias" },
+        { n: 5, title: "Verificación final del siniestro", owner: "Auditoría", status: completed > 0 && pending === 0 ? "completado" : "pendiente", time: stamp(6), action: "Verificar", target: "auditorias" },
+    ];
+}
+
+function renderWorkflowStep(step, role) {
+    const canAct = roleCanActOnStep(role, step.n);
+    const statusClass = step.status.replace(" ", "-");
+    return `<div class="audit-step ${statusClass}">
+        <div class="audit-step-index">${step.n}</div>
+        <div class="audit-step-title"><h3>${step.title}</h3></div>
+        <div class="audit-step-owner">${step.owner}</div>
+        <div class="audit-step-time">${step.time}</div>
+        <span class="audit-status ${statusClass}">${step.status}</span>
+        <button class="btn ${canAct ? "btn-primary" : "btn-ghost"} btn-sm" ${canAct ? `onclick="navigateTo('${step.target}')"` : "disabled"}>${step.action}</button>
+    </div>`;
+}
+
+function roleCanActOnStep(role, step) {
+    const map = { analista: [1, 2, 4], antifraude: [3, 4], auditoria: [4, 5], demo_jurado: [1, 2, 3, 4, 5] };
+    return (map[role] || []).includes(step);
+}
+
+function renderRoleActions(role, ops) {
+    const byRole = {
+        analista: [["Registrar siniestro", "upload", "Crear expediente y anexar documentos."], ["Agregar facturas", "auditorias", `${ops.audit_queue?.pending ?? 0} factura(s) pendientes.`]],
+        antifraude: [["Cuantificar y detectar fraude", "siniestros", "Abrir casos con score alto."], ["Aprobación conjunta", "auditorias", "Preparar decisión con Contabilidad."]],
+        auditoria: [["Verificación final", "auditorias", "Validar trazabilidad y monto automático."], ["Auditoría completa", "auditorias", "Revisar evidencia y resultado final."]],
+        demo_jurado: [["Probar Analista", "upload", "Carga facturas y crea expediente."], ["Probar Antifraude", "siniestros", "Investiga señales."], ["Probar Auditoría", "auditorias", "Cierra la revisión."]],
+    };
+    return (byRole[role] || byRole.analista).map(([label, target, text]) => `<button class="audit-action" onclick="navigateTo('${target}')"><strong>${label}</strong><span>${text}</span></button>`).join("");
+}
+
+function renderAuditAlerts(fraud, ops) {
+    const indicators = (fraud.top_indicators || []).slice(0, 5);
+    return `<div class="audit-alert-row"><strong>${fraud.total_high_risk ?? 0}</strong><span>Siniestros en alto riesgo</span></div>
+        <div class="audit-alert-row"><strong>${ops.audit_queue?.escalated ?? 0}</strong><span>Casos escalados para aprobación</span></div>
+        <div class="audit-alert-row"><strong>${ops.documentation?.missing ?? 0}</strong><span>Expedientes con documentación faltante</span></div>
+        <div class="audit-alert-tags">${indicators.length ? indicators.map(i => `<span class="intel-indicator-tag">${truncate(labelFromPayload(i.indicator), 28)}</span>`).join("") : '<span class="intel-empty">Sin indicadores recurrentes</span>'}</div>`;
+}
+
+function renderAuditPanelGuide() {
+    return `<div class="audit-guide"><div><strong>Guía rápida Demo/Jurado</strong><p>Recorre el proceso por departamentos: Analista registra y carga; Antifraude cuantifica y detecta anomalías; Contabilidad coaprueba; Auditoría verifica el monto final. Cambia de perfil con <strong>Sign Out</strong> y selecciona el rol correspondiente.</p></div><div class="audit-guide-steps"><span>1. Analista: Cargar</span><span>2. Antifraude: Siniestros</span><span>3. Contabilidad/Auditoría: Auditorías</span><span>4. Ver monto a cubrir</span></div><button class="btn btn-ghost btn-sm" onclick="skipAuditGuide()">Saltar guía</button></div>`;
+}
+
+export function skipAuditGuide() {
+    localStorage.setItem("auditPanelGuideHidden", "1");
+    loadAuditPanel(false);
+}
+
+export function reactivateAuditGuide() {
+    localStorage.removeItem("auditPanelGuideHidden");
+    localStorage.setItem("auditPanelGuideStep", "1");
+    loadAuditPanel(true);
+}
