@@ -30,6 +30,7 @@ export const state = {
     claimsSortDir: "desc",
     claimsTypeFilter: "all",
     claimsStatusFilter: "all",
+    showClaimForm: false,
 
     // Upload page
     generatedFacturas: [],

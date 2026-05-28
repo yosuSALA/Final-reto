@@ -724,6 +724,417 @@ def get_claims(
     return output
 
 
+# ── Creación manual y CSV de Siniestros ────────────────
+
+# Permite ingreso por valor textual (con o sin acentos / con underscores) ó valor canónico del enum.
+_RAMO_ALIASES = {
+    "vehiculos": Ramo.VEHICULOS, "vehículos": Ramo.VEHICULOS, "vehicle": Ramo.VEHICULOS,
+    "salud": Ramo.SALUD, "health": Ramo.SALUD,
+    "vida": Ramo.VIDA, "life": Ramo.VIDA,
+    "generales": Ramo.GENERALES, "general": Ramo.GENERALES,
+    "hogar": Ramo.HOGAR, "home": Ramo.HOGAR,
+    "otro": Ramo.OTRO, "other": Ramo.OTRO,
+}
+_COBERTURA_ALIASES = {
+    "choque": Cobertura.CHOQUE, "colision": Cobertura.CHOQUE, "colisión": Cobertura.CHOQUE,
+    "robo": Cobertura.ROBO, "hurto": Cobertura.ROBO,
+    "atencion_medica": Cobertura.ATENCION_MEDICA, "atención_medica": Cobertura.ATENCION_MEDICA,
+    "atencion medica": Cobertura.ATENCION_MEDICA, "atención médica": Cobertura.ATENCION_MEDICA,
+    "medica": Cobertura.ATENCION_MEDICA,
+    "incendio": Cobertura.INCENDIO, "fire": Cobertura.INCENDIO,
+    "danio": Cobertura.DANIO, "daño": Cobertura.DANIO, "dano": Cobertura.DANIO,
+    "otro": Cobertura.OTRO, "other": Cobertura.OTRO,
+}
+_ESTADO_ALIASES = {
+    "reserva": EstadoSiniestro.RESERVA, "abierto": EstadoSiniestro.RESERVA,
+    "pago_total": EstadoSiniestro.PAGO_TOTAL, "pago total": EstadoSiniestro.PAGO_TOTAL,
+    "pago_parcial": EstadoSiniestro.PAGO_PARCIAL, "pago parcial": EstadoSiniestro.PAGO_PARCIAL,
+    "anticipo": EstadoSiniestro.ANTICIPO,
+    "negativa": EstadoSiniestro.NEGATIVA, "rechazado": EstadoSiniestro.NEGATIVA,
+    "cierre_sin_consecuencia": EstadoSiniestro.CIERRE_SIN_CONSECUENCIA,
+    "cierre sin consecuencia": EstadoSiniestro.CIERRE_SIN_CONSECUENCIA,
+    "liquidado": EstadoSiniestro.LIQUIDADO, "cerrado": EstadoSiniestro.LIQUIDADO,
+}
+
+
+def _normalize_enum(value: str, aliases: dict, default):
+    if value is None:
+        return default
+    raw = str(value).strip().lower()
+    if not raw:
+        return default
+    if raw in aliases:
+        return aliases[raw]
+    # Acepta valor canónico ya sea exacto o sin acentos
+    for member in default.__class__:
+        if member.value.lower() == raw or member.name.lower() == raw:
+            return member
+    return None
+
+
+def _parse_incident_date(raw: str):
+    if not raw:
+        return None
+    raw = str(raw).strip()
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.strptime(raw, fmt)
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+
+
+def _ensure_poliza_for_claim(scope: ProfileScope, db: Session, policy_number: str,
+                             insured_id: str, insured_name: str, ramo: Ramo) -> Poliza:
+    """Devuelve la Poliza existente o crea un placeholder (junto con el Asegurado si hace falta).
+    Permite registrar siniestros sobre pólizas no migradas aún (audit-trail-friendly)."""
+    from datetime import timedelta
+
+    poliza = scope.polizas().filter(Poliza.id_poliza == policy_number).first()
+    if poliza:
+        return poliza
+
+    asegurado = scope.asegurados().filter(AseguradoSintetico.id_asegurado == insured_id).first()
+    if not asegurado:
+        asegurado = AseguradoSintetico(
+            id_asegurado=insured_id,
+            profile_id=scope.profile_id,
+            nombre=(insured_name or insured_id)[:150],
+        )
+        db.add(asegurado)
+        db.flush()
+
+    now = datetime.utcnow()
+    poliza = Poliza(
+        id_poliza=policy_number,
+        profile_id=scope.profile_id,
+        id_asegurado=asegurado.id_asegurado,
+        ramo=ramo,
+        fecha_inicio=now - timedelta(days=365),
+        fecha_fin=now + timedelta(days=365),
+        prima=0.0,
+        suma_asegurada=0.0,
+        deducible=0.0,
+        estado_poliza="Vigente",
+    )
+    db.add(poliza)
+    db.flush()
+    return poliza
+
+
+def _ensure_vehiculo_for_claim(scope: ProfileScope, db: Session, poliza_id: str,
+                               plate: str, brand: str, model: str, year):
+    """Devuelve un Vehiculo por placa o crea uno nuevo asociado a la póliza."""
+    plate = (plate or "").strip().upper()
+    if not plate:
+        return None
+    veh = db.query(Vehiculo).filter(Vehiculo.placa == plate).first()
+    if veh:
+        return veh
+    try:
+        year_int = int(year) if year not in (None, "", "None") else None
+    except (TypeError, ValueError):
+        year_int = None
+    veh = Vehiculo(
+        id_poliza=poliza_id,
+        placa=plate,
+        marca=(brand or "").strip() or None,
+        modelo=(model or "").strip() or None,
+        anio=year_int,
+    )
+    db.add(veh)
+    db.flush()
+    return veh
+
+
+def _siniestro_to_dict(s: Siniestro, scope: ProfileScope) -> dict:
+    invoices = scope.invoices().filter(Invoice.siniestro_id == s.id_siniestro).all()
+    audit = scope.audit_results().filter(AuditResult.siniestro_id == s.id_siniestro).first()
+    owner_name = s.id_asegurado
+    if s.asegurado_rel and s.asegurado_rel.nombre:
+        owner_name = s.asegurado_rel.nombre
+    vehicle_plate = s.vehiculo_rel.placa if s.vehiculo_rel and s.vehiculo_rel.placa else "N/D"
+    if s.vehiculo_rel:
+        vehicle = " ".join([x for x in [s.vehiculo_rel.marca, s.vehiculo_rel.modelo, str(s.vehiculo_rel.anio or "")] if x]).strip()
+    else:
+        vehicle = "N/D"
+    return {
+        "id": s.id_siniestro,
+        "claim_number": f"SIN-{s.id_siniestro}",
+        "claim_type": s.ramo.value if s.ramo else "",
+        "cobertura": s.cobertura.value if s.cobertura else "",
+        "estado": s.estado.value if s.estado else "",
+        "description": s.descripcion or "",
+        "vehicle_plate": vehicle_plate,
+        "vehicle": vehicle or "N/D",
+        "insured_name": owner_name,
+        "policy_number": s.id_poliza,
+        "incident_date": s.fecha_ocurrencia.isoformat() if s.fecha_ocurrencia else None,
+        "invoice_count": len(invoices),
+        "audit_status": audit.status.value if audit else "pending",
+        "risk_score": audit.risk_score if audit else None,
+    }
+
+
+class ClaimCreate(BaseModel):
+    policy_number: str
+    insured_id: str
+    insured_name: str = ""
+    ramo: str = "Vehículos"
+    cobertura: str = "Choque"
+    estado: str = "Reserva"
+    incident_date: str  # YYYY-MM-DD o ISO
+    monto_reclamado: float = 0.0
+    sucursal: str = ""
+    descripcion: str = ""
+    vehicle_plate: str = ""
+    vehicle_brand: str = ""
+    vehicle_model: str = ""
+    vehicle_year: int | None = None
+
+
+@app.post("/api/claims", status_code=201)
+def create_claim(
+    data: ClaimCreate,
+    scope: ProfileScope = Depends(get_scope),
+    db: Session = Depends(get_db),
+):
+    """Crea un siniestro manualmente. Si la póliza/asegurado/vehículo no existen, los crea como placeholders."""
+    scope.require_write("siniestros")
+
+    policy_number = (data.policy_number or "").strip()
+    insured_id = (data.insured_id or "").strip()
+    if not policy_number or not insured_id:
+        raise HTTPException(status_code=400, detail="policy_number e insured_id son requeridos.")
+
+    ramo = _normalize_enum(data.ramo, _RAMO_ALIASES, Ramo.VEHICULOS)
+    cobertura = _normalize_enum(data.cobertura, _COBERTURA_ALIASES, Cobertura.OTRO)
+    estado = _normalize_enum(data.estado, _ESTADO_ALIASES, EstadoSiniestro.RESERVA)
+    if ramo is None or cobertura is None or estado is None:
+        raise HTTPException(status_code=422, detail="Valores no válidos para ramo, cobertura o estado.")
+
+    fecha_ocurrencia = _parse_incident_date(data.incident_date)
+    if not fecha_ocurrencia:
+        raise HTTPException(status_code=422, detail="incident_date debe estar en formato YYYY-MM-DD o ISO 8601.")
+
+    poliza = _ensure_poliza_for_claim(
+        scope, db, policy_number, insured_id, data.insured_name, ramo,
+    )
+    veh = _ensure_vehiculo_for_claim(
+        scope, db, poliza.id_poliza,
+        data.vehicle_plate, data.vehicle_brand, data.vehicle_model, data.vehicle_year,
+    )
+
+    siniestro = Siniestro(
+        profile_id=scope.profile_id,
+        id_poliza=poliza.id_poliza,
+        id_asegurado=insured_id,
+        ramo=ramo,
+        cobertura=cobertura,
+        estado=estado,
+        fecha_ocurrencia=fecha_ocurrencia,
+        fecha_reporte=datetime.utcnow(),
+        monto_reclamado=float(data.monto_reclamado or 0),
+        sucursal=(data.sucursal or "").strip()[:100] or None,
+        descripcion=(data.descripcion or "").strip() or None,
+        vehiculo_id=veh.id if veh else None,
+    )
+    db.add(siniestro)
+    try:
+        db.commit()
+    except IntegrityError as e:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=f"No se pudo crear el siniestro: {str(e.orig)}")
+    db.refresh(siniestro)
+    return _siniestro_to_dict(siniestro, scope)
+
+
+CLAIMS_CSV_REQUIRED_COLS = {"policy_number", "insured_id", "incident_date"}
+
+
+def parse_claims_csv_content(text: str) -> dict:
+    """Parsea CSV de siniestros, normaliza y devuelve filas válidas + errores."""
+    reader = csv.DictReader(io.StringIO(text))
+    headers = {h.strip().lower() for h in (reader.fieldnames or [])}
+    missing = CLAIMS_CSV_REQUIRED_COLS - headers
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Columnas requeridas faltantes: {', '.join(sorted(missing))}",
+        )
+
+    inserted, skipped, errors = [], [], []
+    seen_keys = set()
+
+    for i, row in enumerate(reader, start=2):
+        row = {k.strip().lower(): (v or "").strip() for k, v in row.items()}
+
+        policy_number = row.get("policy_number", "")
+        insured_id = row.get("insured_id", "")
+        if not policy_number or not insured_id:
+            errors.append({"row": i, "reason": "policy_number e insured_id son obligatorios."})
+            continue
+
+        fecha = _parse_incident_date(row.get("incident_date", ""))
+        if not fecha:
+            errors.append({"row": i, "code": policy_number, "reason": "incident_date debe ser YYYY-MM-DD o ISO 8601."})
+            continue
+
+        ramo = _normalize_enum(row.get("ramo", "Vehículos"), _RAMO_ALIASES, Ramo.VEHICULOS)
+        cobertura = _normalize_enum(row.get("cobertura", "Otro"), _COBERTURA_ALIASES, Cobertura.OTRO)
+        estado = _normalize_enum(row.get("estado", "Reserva"), _ESTADO_ALIASES, EstadoSiniestro.RESERVA)
+        if ramo is None or cobertura is None or estado is None:
+            errors.append({"row": i, "code": policy_number, "reason": "ramo/cobertura/estado contiene un valor no válido."})
+            continue
+
+        monto_raw = row.get("monto_reclamado", "0").replace(",", ".")
+        try:
+            monto = float(monto_raw) if monto_raw else 0.0
+        except ValueError:
+            errors.append({"row": i, "code": policy_number, "reason": "monto_reclamado debe ser numérico."})
+            continue
+        if monto < 0:
+            errors.append({"row": i, "code": policy_number, "reason": "monto_reclamado no puede ser negativo."})
+            continue
+
+        year_raw = row.get("vehicle_year", "").strip()
+        try:
+            year_int = int(year_raw) if year_raw else None
+        except ValueError:
+            errors.append({"row": i, "code": policy_number, "reason": "vehicle_year debe ser un entero."})
+            continue
+
+        # Dedup dentro del mismo archivo: (poliza, asegurado, fecha, cobertura)
+        dedup_key = (policy_number, insured_id, fecha.date().isoformat(), cobertura.value)
+        if dedup_key in seen_keys:
+            skipped.append({"row": i, "code": policy_number, "reason": "fila duplicada en el mismo archivo."})
+            continue
+        seen_keys.add(dedup_key)
+
+        inserted.append({
+            "row": i,
+            "policy_number": policy_number,
+            "insured_id": insured_id,
+            "insured_name": row.get("insured_name", ""),
+            "ramo": ramo,
+            "cobertura": cobertura,
+            "estado": estado,
+            "fecha_ocurrencia": fecha,
+            "monto_reclamado": monto,
+            "sucursal": row.get("sucursal", ""),
+            "descripcion": row.get("descripcion", ""),
+            "vehicle_plate": row.get("vehicle_plate", ""),
+            "vehicle_brand": row.get("vehicle_brand", ""),
+            "vehicle_model": row.get("vehicle_model", ""),
+            "vehicle_year": year_int,
+        })
+
+    return {"inserted": inserted, "skipped": skipped, "errors": errors}
+
+
+@app.post("/api/claims/import-csv", status_code=200)
+async def import_claims_csv(
+    file: UploadFile = File(...),
+    scope: ProfileScope = Depends(get_scope),
+    db: Session = Depends(get_db),
+):
+    """Importación masiva de siniestros desde CSV. Sigue el mismo flujo que /api/tariffs/import-csv."""
+    scope.require_write("siniestros")
+    if not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="El archivo debe ser .csv")
+
+    raw = await file.read()
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = raw.decode("latin-1")
+
+    parsed = parse_claims_csv_content(text)
+    inserted_rows, skipped, errors = parsed["inserted"], parsed["skipped"], parsed["errors"]
+
+    final_inserted = []
+    for item in inserted_rows:
+        # Dedup contra BD: si ya existe un siniestro con misma (poliza, asegurado, fecha, cobertura), omitir.
+        existing = (
+            scope.siniestros()
+            .filter(
+                Siniestro.id_poliza == item["policy_number"],
+                Siniestro.id_asegurado == item["insured_id"],
+                Siniestro.fecha_ocurrencia == item["fecha_ocurrencia"],
+                Siniestro.cobertura == item["cobertura"],
+            )
+            .first()
+        )
+        if existing:
+            skipped.append({
+                "row": item["row"], "code": item["policy_number"],
+                "reason": "ya existe un siniestro idéntico (poliza+asegurado+fecha+cobertura).",
+            })
+            continue
+
+        try:
+            poliza = _ensure_poliza_for_claim(
+                scope, db, item["policy_number"], item["insured_id"],
+                item["insured_name"], item["ramo"],
+            )
+            veh = _ensure_vehiculo_for_claim(
+                scope, db, poliza.id_poliza,
+                item["vehicle_plate"], item["vehicle_brand"],
+                item["vehicle_model"], item["vehicle_year"],
+            )
+            siniestro = Siniestro(
+                profile_id=scope.profile_id,
+                id_poliza=poliza.id_poliza,
+                id_asegurado=item["insured_id"],
+                ramo=item["ramo"],
+                cobertura=item["cobertura"],
+                estado=item["estado"],
+                fecha_ocurrencia=item["fecha_ocurrencia"],
+                fecha_reporte=datetime.utcnow(),
+                monto_reclamado=item["monto_reclamado"],
+                sucursal=(item["sucursal"] or "")[:100] or None,
+                descripcion=item["descripcion"] or None,
+                vehiculo_id=veh.id if veh else None,
+            )
+            db.add(siniestro)
+            db.flush()
+            final_inserted.append({
+                "row": item["row"],
+                "code": item["policy_number"],
+                "claim_id": siniestro.id_siniestro,
+            })
+        except IntegrityError as e:
+            db.rollback()
+            errors.append({
+                "row": item["row"], "code": item["policy_number"],
+                "reason": f"error de integridad: {str(e.orig)[:140]}",
+            })
+        except Exception as e:
+            db.rollback()
+            errors.append({
+                "row": item["row"], "code": item["policy_number"],
+                "reason": f"error al guardar: {str(e)[:140]}",
+            })
+
+    if final_inserted:
+        db.commit()
+
+    return {
+        "status": "ok",
+        "inserted": len(final_inserted),
+        "skipped": len(skipped),
+        "errors": len(errors),
+        "detail": {
+            "inserted": final_inserted,
+            "skipped": skipped,
+            "errors": errors,
+        },
+    }
+
+
 @app.get("/api/claims/{claim_id}/executive-summary")
 def get_claim_executive_summary(
     claim_id: int,

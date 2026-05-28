@@ -1,11 +1,26 @@
 import { apiFetch, apiPost } from "../api.js";
 import { state } from "../state.js";
 import { renderRiskBadge, renderStatusBadge, showToast } from "../utils.js";
+import { showCsvSchemaModal } from "../components/csvUpload.js";
+
+export { showCsvSchemaModal };
+
+const RAMO_OPTIONS = ["Vehículos", "Salud", "Vida", "Generales", "Hogar", "Otro"];
+const COBERTURA_OPTIONS = ["Choque", "Robo", "Atención médica", "Incendio", "Daño", "Otro"];
+const ESTADO_OPTIONS = ["Reserva", "Pago Total", "Pago Parcial", "Anticipo", "Negativa", "Cierre Sin Consecuencia", "Liquidado"];
 
 export async function loadSiniestros() {
     state.claimsData = await apiFetch("/claims") || [];
     renderSiniestrosView();
+    window._siniestrosLoaded = true;
 }
+
+// Recarga la lista cuando se completa una importación CSV exitosa
+window.addEventListener("csv:imported", async (e) => {
+    if (e.detail?.entity === "siniestros" && window._siniestrosLoaded) {
+        await loadSiniestros();
+    }
+});
 
 export function renderSiniestrosView() {
     const page = document.getElementById("page-siniestros");
@@ -13,10 +28,21 @@ export function renderSiniestrosView() {
     const types = [...new Set(state.claimsData.map(c => c.claim_type).filter(Boolean))];
     const statuses = [...new Set(state.claimsData.map(c => c.audit_status).filter(Boolean))];
     page.innerHTML = `
-        <div class="page-header">
-            <h1>Siniestros</h1>
-            <p>Siniestros reportados y su estado. Expanda cada fila para ver facturas y configurar destinatarios de notificación.</p>
+        <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;">
+            <div>
+                <h1>Siniestros</h1>
+                <p>Siniestros reportados y su estado. Expanda cada fila para ver facturas y configurar destinatarios de notificación.</p>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button class="btn btn-ghost" onclick="showCsvSchemaModal('siniestros')" title="Importar múltiples siniestros desde archivo CSV">
+                    ⬆ Importar CSV
+                </button>
+                <button class="btn btn-primary" onclick="toggleClaimForm()">
+                    ${state.showClaimForm ? "✕ Cerrar formulario" : "+ Añadir Manual"}
+                </button>
+            </div>
         </div>
+        ${state.showClaimForm ? renderClaimForm() : ""}
         ${renderWorkflowContext()}
         <div class="card">
             <div class="card-header siniestros-toolbar">
@@ -370,4 +396,90 @@ export function closeSummaryModal() {
     const modal = document.getElementById("summary-modal");
     if (modal) modal.style.display = "none";
     _currentSummaryClaimId = null;
+}
+
+// ── Formulario manual de Siniestro ──────────────────────
+
+function renderClaimForm() {
+    const today = new Date().toISOString().slice(0, 10);
+    return `
+    <div class="card" style="margin-bottom:18px;border-left:4px solid var(--accent-indigo);">
+        <div class="card-header"><h2>Nuevo Siniestro Manual</h2></div>
+        <div class="card-body">
+            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
+                <label>Póliza <input id="sn-policy" type="text" placeholder="POL-0001" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;"></label>
+                <label>ID Asegurado <input id="sn-insured-id" type="text" placeholder="ASE-12345" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;"></label>
+                <label>Nombre del Asegurado <input id="sn-insured-name" type="text" placeholder="Juan Pérez" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;"></label>
+                <label>Fecha de Ocurrencia <input id="sn-date" type="date" value="${today}" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;"></label>
+                <label>Ramo
+                    <select id="sn-ramo" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;">
+                        ${RAMO_OPTIONS.map(r => `<option value="${r}" ${r === "Vehículos" ? "selected" : ""}>${r}</option>`).join("")}
+                    </select>
+                </label>
+                <label>Cobertura
+                    <select id="sn-cobertura" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;">
+                        ${COBERTURA_OPTIONS.map(c => `<option value="${c}" ${c === "Choque" ? "selected" : ""}>${c}</option>`).join("")}
+                    </select>
+                </label>
+                <label>Estado
+                    <select id="sn-estado" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;">
+                        ${ESTADO_OPTIONS.map(s => `<option value="${s}" ${s === "Reserva" ? "selected" : ""}>${s}</option>`).join("")}
+                    </select>
+                </label>
+                <label>Monto Reclamado (USD) <input id="sn-monto" type="number" step="0.01" min="0" value="0" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;"></label>
+                <label>Sucursal <input id="sn-sucursal" type="text" placeholder="Quito-Norte" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;"></label>
+                <label>Placa del Vehículo <input id="sn-plate" type="text" placeholder="PBA-1234" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;text-transform:uppercase;"></label>
+                <label>Marca <input id="sn-brand" type="text" placeholder="Toyota" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;"></label>
+                <label>Modelo <input id="sn-model" type="text" placeholder="Corolla" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;"></label>
+                <label>Año <input id="sn-year" type="number" min="1900" max="2100" placeholder="2022" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;"></label>
+                <label style="grid-column:1/3;">Descripción <textarea id="sn-desc" placeholder="Detalles del incidente..." style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;min-height:60px;resize:vertical;"></textarea></label>
+            </div>
+            <p style="margin-top:10px;font-size:0.78rem;color:var(--text-muted);">
+                Si la póliza, asegurado o vehículo no existen aún, se crearán placeholders preservando el audit trail.
+            </p>
+            <div style="margin-top:14px;display:flex;gap:8px;">
+                <button class="btn btn-success" onclick="submitNewClaim()">Guardar Siniestro</button>
+                <button class="btn btn-ghost" onclick="toggleClaimForm()">Cancelar</button>
+            </div>
+        </div>
+    </div>
+    `;
+}
+
+export function toggleClaimForm() {
+    state.showClaimForm = !state.showClaimForm;
+    renderSiniestrosView();
+}
+
+export async function submitNewClaim() {
+    const policy = (document.getElementById("sn-policy").value || "").trim();
+    const insuredId = (document.getElementById("sn-insured-id").value || "").trim();
+    const incidentDate = (document.getElementById("sn-date").value || "").trim();
+    if (!policy || !insuredId || !incidentDate) {
+        showToast("Póliza, ID asegurado y fecha son requeridos", "error");
+        return;
+    }
+    const yearRaw = (document.getElementById("sn-year").value || "").trim();
+    const payload = {
+        policy_number: policy,
+        insured_id: insuredId,
+        insured_name: (document.getElementById("sn-insured-name").value || "").trim(),
+        ramo: document.getElementById("sn-ramo").value,
+        cobertura: document.getElementById("sn-cobertura").value,
+        estado: document.getElementById("sn-estado").value,
+        incident_date: incidentDate,
+        monto_reclamado: parseFloat(document.getElementById("sn-monto").value || "0"),
+        sucursal: (document.getElementById("sn-sucursal").value || "").trim(),
+        descripcion: (document.getElementById("sn-desc").value || "").trim(),
+        vehicle_plate: (document.getElementById("sn-plate").value || "").trim().toUpperCase(),
+        vehicle_brand: (document.getElementById("sn-brand").value || "").trim(),
+        vehicle_model: (document.getElementById("sn-model").value || "").trim(),
+        vehicle_year: yearRaw ? parseInt(yearRaw, 10) : null,
+    };
+    const res = await apiPost("/claims", payload);
+    if (res) {
+        showToast(`Siniestro ${res.claim_number} creado`, "success");
+        state.showClaimForm = false;
+        await loadSiniestros();
+    }
 }

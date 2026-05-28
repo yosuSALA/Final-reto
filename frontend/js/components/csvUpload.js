@@ -1,5 +1,5 @@
 // Componente reutilizable de subida CSV con modal de esquema.
-// Actualmente soporta entity: "tarifario"
+// Entities soportadas: "tarifario", "siniestros"
 import { state } from "../state.js";
 import { showToast } from "../utils.js";
 import { API } from "../api.js";
@@ -25,6 +25,31 @@ const SCHEMAS = {
             ["REP-002", "Guardafango lateral izquierdo", "repuesto", "180.00", "10", "1", "2", "choque_lateral"],
             ["PIN-001", "Pintura en base agua (litro)", "pintura", "45.00", "15", "1", "5", "choque_frontal;rayon_pintura"],
             ["MO-001", "Mano de obra desmontaje capot", "mano_obra", "35.00", "5", "1", "1", "choque_frontal"],
+        ],
+    },
+    siniestros: {
+        title: "Importar Siniestros desde CSV",
+        endpoint: "/claims/import-csv",
+        columns: [
+            { name: "policy_number",   required: true,  type: "texto",   example: "POL-0001",        description: "Identificador de la póliza. Si no existe se crea un placeholder." },
+            { name: "insured_id",      required: true,  type: "texto",   example: "ASE-12345",       description: "Identificador del asegurado. Si no existe se crea un placeholder." },
+            { name: "incident_date",   required: true,  type: "fecha",   example: "2026-05-12",      description: "Fecha de ocurrencia (YYYY-MM-DD, DD/MM/YYYY o ISO 8601)." },
+            { name: "ramo",            required: false, type: "enum",    example: "Vehículos",       description: "Vehículos · Salud · Vida · Generales · Hogar · Otro (por defecto Vehículos)" },
+            { name: "cobertura",       required: false, type: "enum",    example: "Choque",          description: "Choque · Robo · Atención médica · Incendio · Daño · Otro (por defecto Otro)" },
+            { name: "estado",          required: false, type: "enum",    example: "Reserva",         description: "Reserva · Pago Total · Pago Parcial · Anticipo · Negativa · Cierre Sin Consecuencia · Liquidado (por defecto Reserva)" },
+            { name: "insured_name",    required: false, type: "texto",   example: "Juan Pérez",      description: "Nombre del asegurado (se usa para crear el placeholder si no existe)." },
+            { name: "monto_reclamado", required: false, type: "decimal", example: "1250.00",         description: "Monto reclamado en USD (use punto como separador decimal). Por defecto 0." },
+            { name: "sucursal",        required: false, type: "texto",   example: "Quito-Norte",     description: "Sucursal o agencia responsable." },
+            { name: "descripcion",     required: false, type: "texto",   example: "Choque en parqueadero", description: "Descripción libre del incidente." },
+            { name: "vehicle_plate",   required: false, type: "texto",   example: "PBA-1234",        description: "Placa del vehículo. Se reutiliza si ya existe, o se crea uno nuevo asociado a la póliza." },
+            { name: "vehicle_brand",   required: false, type: "texto",   example: "Toyota",          description: "Marca del vehículo." },
+            { name: "vehicle_model",   required: false, type: "texto",   example: "Corolla",         description: "Modelo del vehículo." },
+            { name: "vehicle_year",    required: false, type: "entero",  example: "2022",            description: "Año del vehículo." },
+        ],
+        sampleRows: [
+            ["POL-0001", "ASE-12345", "2026-05-12", "Vehículos", "Choque",  "Reserva",       "Juan Pérez",  "1250.00", "Quito-Norte", "Choque en parqueadero", "PBA-1234", "Toyota", "Corolla", "2022"],
+            ["POL-0002", "ASE-67890", "2026-05-15", "Vehículos", "Robo",    "Reserva",       "María López", "8500.00", "Guayaquil-Sur", "Robo total reportado", "GBB-7788", "Chevrolet", "Sail", "2020"],
+            ["POL-0003", "ASE-12345", "2026-04-30", "Vehículos", "Daño",    "Pago Parcial",  "Juan Pérez",  "450.00",  "Quito-Norte", "Daño por granizo", "PBA-1234", "Toyota", "Corolla", "2022"],
         ],
     },
 };
@@ -126,11 +151,12 @@ export async function submitCsvUpload() {
 
         resultEl.innerHTML = _renderImportResult(data);
 
+        const unit = _currentEntity === "siniestros" ? "siniestro(s)" : "item(s)";
         if (data.inserted > 0) {
-            showToast(`${data.inserted} item(s) importados correctamente`, "success");
+            showToast(`${data.inserted} ${unit} importados correctamente`, "success");
             window.dispatchEvent(new CustomEvent("csv:imported", { detail: { entity: _currentEntity } }));
         } else if (data.errors === 0 && data.skipped > 0) {
-            showToast("No se insertaron items: todos ya existen en este perfil", "warning");
+            showToast(`No se insertaron ${unit}: todos ya existen en este perfil`, "warning");
         }
 
     } catch (e) {
@@ -164,6 +190,23 @@ export function downloadCsvTemplate(entity) {
 }
 
 // ── Renderizado interno ─────────────────────────────────
+
+function _renderEntityNotes(entity) {
+    const common = `<li>La primera fila debe contener los nombres de columna (exactamente como se muestran arriba).</li>`;
+    if (entity === "tarifario") {
+        return common + `
+            <li>El separador de columnas debe ser <strong>coma (,)</strong>. Para la columna <code>applicable_claim_types</code> use <strong>punto y coma (;)</strong> entre valores.</li>
+            <li>Los items cuyo <code>code</code> ya existan en este perfil serán omitidos (no duplicados).</li>`;
+    }
+    if (entity === "siniestros") {
+        return common + `
+            <li>El separador de columnas debe ser <strong>coma (,)</strong>.</li>
+            <li>Las fechas aceptan formato <code>YYYY-MM-DD</code>, <code>DD/MM/YYYY</code> o ISO 8601.</li>
+            <li>Si la <code>policy_number</code>, <code>insured_id</code> o <code>vehicle_plate</code> no existen, se crean como placeholders para preservar el audit trail.</li>
+            <li>Se omiten siniestros duplicados (misma póliza, asegurado, fecha y cobertura) que ya existan en el sistema o estén repetidos en el archivo.</li>`;
+    }
+    return common;
+}
 
 function _renderModalContent(schema, entity) {
     const cols = schema.columns;
@@ -215,9 +258,7 @@ function _renderModalContent(schema, entity) {
         <div style="background:var(--bg-tertiary);border-radius:8px;padding:12px 14px;margin-bottom:20px;font-size:0.8rem;color:var(--text-secondary);line-height:1.6;">
             <strong style="color:var(--text-primary);">Notas importantes:</strong>
             <ul style="margin:6px 0 0;padding-left:18px;">
-                <li>La primera fila debe contener los nombres de columna (exactamente como se muestran arriba).</li>
-                <li>El separador de columnas debe ser <strong>coma (,)</strong>. Para la columna <code>applicable_claim_types</code> use <strong>punto y coma (;)</strong> entre valores.</li>
-                <li>Los items cuyo <code>code</code> ya existan en este perfil serán omitidos (no duplicados).</li>
+                ${_renderEntityNotes(entity)}
                 <li>Codificación recomendada: <strong>UTF-8</strong>. Se acepta también exportación directa desde Excel.</li>
             </ul>
         </div>

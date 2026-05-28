@@ -23,6 +23,7 @@ import {
     openNotifyModal, closeNotifyModal, saveNotifyConfig,
     openSummaryModal, closeSummaryModal,
     setClaimsSearch, setClaimsTypeFilter, setClaimsStatusFilter, setClaimsSort, clearClaimsWorkflowFocus,
+    toggleClaimForm, submitNewClaim,
 } from "./pages/siniestros.js";
 import {
     loadUploadPage, genRandomFactura, clearGeneratedFacturas,
@@ -80,6 +81,7 @@ Object.assign(window, {
     openNotifyModal, closeNotifyModal, saveNotifyConfig,
     openSummaryModal, closeSummaryModal,
     setClaimsSearch, setClaimsTypeFilter, setClaimsStatusFilter, setClaimsSort, clearClaimsWorkflowFocus,
+    toggleClaimForm, submitNewClaim,
     genRandomFactura, clearGeneratedFacturas, setUploadIsTest,
     handleUploadFile, auditTestPdfDirect,
     triggerJitAudit, triggerRulesAudit,
