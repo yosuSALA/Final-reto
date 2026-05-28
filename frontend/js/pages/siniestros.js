@@ -1,9 +1,6 @@
 import { apiFetch, apiPost } from "../api.js";
 import { state } from "../state.js";
 import { renderRiskBadge, renderStatusBadge, showToast } from "../utils.js";
-import { showCsvSchemaModal } from "../components/csvUpload.js";
-
-export { showCsvSchemaModal };
 
 const RAMO_OPTIONS = ["Vehículos", "Salud", "Vida", "Generales", "Hogar", "Otro"];
 const COBERTURA_OPTIONS = ["Choque", "Robo", "Atención médica", "Incendio", "Daño", "Otro"];
@@ -24,12 +21,14 @@ window.addEventListener("csv:imported", async (e) => {
 
 export function renderSiniestrosView() {
     const page = document.getElementById("page-siniestros");
+    if (!page) return;
+
     const claims = getVisibleClaims();
     const types = [...new Set(state.claimsData.map(c => c.claim_type).filter(Boolean))];
     const statuses = [...new Set(state.claimsData.map(c => c.audit_status).filter(Boolean))];
     const groups = groupByInsured(claims);
 
-    // Solo reconstruir toolbar si no existe o si cambian opciones dinámicas
+    // Solo reconstruir toolbar/outer si no existe
     let toolbar = page.querySelector(".siniestros-toolbar");
     if (!toolbar) {
         page.innerHTML = `
@@ -47,7 +46,9 @@ export function renderSiniestrosView() {
                 </button>
             </div>
         </div>
-        ${state.showClaimForm ? renderClaimForm() : ""}
+        <div id="claim-form-container">
+            ${state.showClaimForm ? renderClaimForm() : ""}
+        </div>
         ${renderWorkflowContext()}
         ${renderFraudReferencePanel()}
         <div class="card">
@@ -63,14 +64,14 @@ export function renderSiniestrosView() {
                 </select>
                 <select class="filter-select" onchange="setClaimsSort(this.value)">
                     ${[
-                ["incident_date:desc", "Fecha reciente"],
-                ["incident_date:asc", "Fecha antigua"],
-                ["claim_number:asc", "Numero A-Z"],
-                ["claim_type:asc", "Tipo A-Z"],
-                ["insured_name:asc", "Asegurado A-Z"],
-                ["risk_score:desc", "Mayor riesgo"],
-                ["invoice_count:desc", "Mas facturas"],
-            ].map(([value, label]) => `<option value="${value}" ${`${state.claimsSortBy}:${state.claimsSortDir}` === value ? "selected" : ""}>${label}</option>`).join("")}
+                        ["incident_date:desc", "Fecha reciente"],
+                        ["incident_date:asc", "Fecha antigua"],
+                        ["claim_number:asc", "Numero A-Z"],
+                        ["claim_type:asc", "Tipo A-Z"],
+                        ["insured_name:asc", "Asegurado A-Z"],
+                        ["risk_score:desc", "Mayor riesgo"],
+                        ["invoice_count:desc", "Mas facturas"],
+                    ].map(([value, label]) => `<option value="${value}" ${`${state.claimsSortBy}:${state.claimsSortDir}` === value ? "selected" : ""}>${label}</option>`).join("")}
                 </select>
             </div>
             <div class="card-body table-wrap" id="claims-table-wrap"></div>
@@ -87,7 +88,7 @@ export function renderSiniestrosView() {
         </div>`;
         toolbar = page.querySelector(".siniestros-toolbar");
     } else {
-        // Actualizar selectores sin recrear el DOM
+        // Actualizar selectores sin recrear el DOM (mantiene foco del buscador)
         const searchInput = toolbar.querySelector("input[type=search]");
         if (searchInput && document.activeElement !== searchInput) {
             searchInput.value = state.claimsSearchTerm || "";
@@ -95,12 +96,17 @@ export function renderSiniestrosView() {
         const typeSelect = toolbar.querySelector("select:nth-of-type(1)");
         const statusSelect = toolbar.querySelector("select:nth-of-type(2)");
         const sortSelect = toolbar.querySelector("select:nth-of-type(3)");
-        if (typeSelect) typeSelect.value = state.claimsTypeFilter;
-        if (statusSelect) statusSelect.value = state.claimsStatusFilter;
+        if (typeSelect) typeSelect.value = state.claimsTypeFilter || "all";
+        if (statusSelect) statusSelect.value = state.claimsStatusFilter || "all";
         if (sortSelect) sortSelect.value = `${state.claimsSortBy}:${state.claimsSortDir}`;
+
+        const formContainer = page.querySelector("#claim-form-container");
+        if (formContainer) {
+            formContainer.innerHTML = state.showClaimForm ? renderClaimForm() : "";
+        }
     }
 
-    // Render solo el body de la tabla
+    // Renderizar solo el cuerpo de la tabla
     const wrap = page.querySelector("#claims-table-wrap");
     if (wrap) {
         const useGrouping = state.claimsSortBy === "insured_name" || !state.claimsSearchTerm?.trim();
@@ -147,7 +153,7 @@ function renderFraudReferencePanel() {
     ];
     return `<div class="card" style="margin-bottom:16px;border-left:4px solid var(--accent-indigo);">
         <div class="card-header" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;" onclick="var b=this.parentElement.querySelector('.card-body');var o=b.style.display==='none';b.style.display=o?'block':'';this.querySelector('span').textContent=o?'\u2212':'+'">
-            <h2>Seniales de posible fraude</h2>
+            <h2>Señales de posible fraude</h2>
             <span style="font-size:1.2rem;color:var(--accent-indigo);">+</span>
         </div>
         <div class="card-body" style="display:none">${miniTable(["Señal", "Criterio", "Puntaje"], signals)}</div>
@@ -215,7 +221,134 @@ export function clearClaimsWorkflowFocus() {
     renderSiniestrosView();
 }
 
-// ── Summary Modal ───────────────────────────────────────
+function bienAsegurado(c) {
+    const ramo = c.claim_type || "";
+    if (ramo === "Vehículos") {
+        const parts = [];
+        if (c.vehicle && c.vehicle !== "N/D") parts.push(c.vehicle);
+        if (c.vehicle_plate && c.vehicle_plate !== "N/D") parts.push(`<span style="font-family:var(--font-mono);font-size:0.8rem;color:var(--text-muted);">(${c.vehicle_plate})</span>`);
+        return parts.join(" ") || "Vehículo N/D";
+    } else if (ramo === "Hogar") {
+        return "🏠 Inmueble Asegurado";
+    } else if (ramo === "Salud" || ramo === "Vida") {
+        return `👤 ${c.insured_name || "Persona Asegurada"}`;
+    } else if (ramo === "Generales") {
+        return "📦 Bienes Generales";
+    } else {
+        return `💼 Cobertura ${c.cobertura || "General"}`;
+    }
+}
+
+function renderClaimRow(c) {
+    const isExpanded = state.claimExpanded === c.id;
+    const main = `
+        <tr style="cursor:pointer; ${isExpanded ? 'background:rgba(99,102,241,0.05);' : ''}" onclick="toggleClaimPreview(${c.id})">
+            <td><span style="display:inline-block; transition:transform 0.2s; transform:rotate(${isExpanded ? 90 : 0}deg); color:var(--accent-indigo); font-size:0.8rem;">▶</span></td>
+            <td><strong>${c.claim_number}</strong></td>
+            <td><span class="cat-tag cat-${(c.claim_type || '').split('_')[0].toLowerCase()}">${(c.claim_type || '').replace(/_/g, ' ')}</span></td>
+            <td>${c.cobertura || '-'}</td>
+            <td>${bienAsegurado(c)}</td>
+            <td>${c.insured_name || '-'}</td>
+            <td style="font-family:var(--font-mono);color:var(--text-muted)">${c.policy_number || '-'}</td>
+            <td>${c.invoice_count}</td>
+            <td>${renderStatusBadge(c.audit_status)}</td>
+            <td onclick="event.stopPropagation()">
+                <div style="display:flex; align-items:center; gap:6px; justify-content:center;">
+                    ${c.fraud_score !== null && c.fraud_score !== undefined ? renderRiskBadge(c.fraud_score) : '<span class="badge badge-info">N/A</span>'}
+                    <button class="btn btn-ghost btn-sm" onclick="askDeepSeekAboutClaim(${c.id})" title="Consultar DeepSeek" style="padding:2px 6px; font-size:0.75rem; border:1px solid var(--border-primary);">
+                        🤖 DeepSeek
+                    </button>
+                </div>
+            </td>
+            <td onclick="event.stopPropagation()" style="display:flex; gap:6px; align-items:center; justify-content:flex-end;">
+                <button class="btn btn-sm" style="background:rgba(2,132,199,0.12); color:var(--accent-blue); border:1px solid rgba(2,132,199,0.2);" onclick="openSummaryModal(${c.id})" title="Ver resumen ejecutivo del siniestro">Resumen</button>
+                <button class="btn ${isExpanded ? 'btn-ghost' : 'btn-sm'} btn-sm" onclick="toggleClaimPreview(${c.id})" ${isExpanded ? '' : 'style="background-color: var(--accent-indigo); color: white;"'}>${isExpanded ? 'Ocultar' : 'Ver facturas'}</button>
+            </td>
+        </tr>
+    `;
+    if (!isExpanded) return main;
+
+    const invs = state.claimInvoicesCache[c.id];
+    let inner;
+    if (invs === undefined) {
+        inner = '<div style="display:flex;align-items:center;gap:8px;color:var(--text-muted);padding:12px"><span class="spinner"></span> Cargando facturas...</div>';
+    } else if (invs.length === 0) {
+        inner = '<div class="empty-state"><h3>Sin facturas asociadas a este siniestro</h3></div>';
+    } else {
+        inner = renderClaimInvoicesPreview(invs);
+    }
+    return main + `
+        <tr class="claim-preview-row">
+            <td colspan="11" style="padding:0;">
+                <div style="padding:18px 24px; background:rgba(99,102,241,0.04); border-top:1px solid rgba(99,102,241,0.25);">
+                    ${inner}
+                </div>
+            </td>
+        </tr>
+    `;
+}
+
+function renderClaimInvoicesPreview(invoices) {
+    return `
+        <h3 style="margin:0 0 12px; color:var(--accent-indigo); font-size:1rem;">Facturas Preliminares (${invoices.length})</h3>
+        <div style="display:flex; flex-direction:column; gap:14px;">
+            ${invoices.map(inv => {
+                const statusBadge = inv.audit_id ? renderStatusBadge(inv.audit_status) : '<span class="badge badge-warning">Pendiente</span>';
+                const goBtn = inv.audit_id
+                    ? `<button class="btn btn-primary btn-sm" onclick="location.hash='audit/${inv.audit_id}'">Ver auditoría</button>`
+                    : `<button class="btn btn-warning btn-sm" onclick="location.hash='pending/${inv.id}'">Auditar ahora</button>`;
+                const risk = inv.risk_score !== null && inv.risk_score !== undefined ? renderRiskBadge(inv.risk_score) : '';
+                return `
+                <div style="background:var(--bg-card); border:1px solid var(--border-primary); border-radius:8px; padding:14px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+                        <div>
+                            <strong style="font-size:1rem;">${inv.invoice_number}</strong>
+                            <span style="color:var(--text-muted); margin-left:12px;">${inv.workshop_name || '-'}</span>
+                            <span style="color:var(--text-muted); font-family:var(--font-mono); margin-left:8px; font-size:0.85rem;">RUC ${inv.workshop_ruc || '-'}</span>
+                        </div>
+                        <div style="display:flex; gap:8px; align-items:center;">
+                            ${risk}${statusBadge}${goBtn}
+                        </div>
+                    </div>
+                    <table style="margin-bottom:0;">
+                        <thead><tr><th>Codigo</th><th>Descripcion</th><th>Cant.</th><th>Unitario</th><th>Total</th></tr></thead>
+                        <tbody>
+                            ${inv.items.map(it => `
+                                <tr>
+                                    <td><span style="font-family:var(--font-mono);color:var(--text-muted)">${it.code || '-'}</span></td>
+                                    <td>${it.description}</td>
+                                    <td>${it.quantity}</td>
+                                    <td>$${(it.unit_price || 0).toFixed(2)}</td>
+                                    <td>$${(it.total_price || 0).toFixed(2)}</td>
+                                </tr>
+                            `).join("")}
+                        </tbody>
+                        <tfoot>
+                            <tr><td colspan="4" style="text-align:right;font-weight:600">Subtotal</td><td>$${(inv.subtotal||0).toFixed(2)}</td></tr>
+                            <tr><td colspan="4" style="text-align:right;font-weight:600">IVA</td><td>$${(inv.iva||0).toFixed(2)}</td></tr>
+                            <tr><td colspan="4" style="text-align:right;font-weight:700">Total</td><td style="font-weight:700">$${(inv.total||0).toFixed(2)}</td></tr>
+                        </tfoot>
+                    </table>
+                </div>
+            `}).join("")}
+        </div>
+    `;
+}
+
+export async function toggleClaimPreview(claimId) {
+    if (state.claimExpanded === claimId) {
+        state.claimExpanded = null;
+        renderSiniestrosView();
+        return;
+    }
+    state.claimExpanded = claimId;
+    renderSiniestrosView();
+    if (!state.claimInvoicesCache[claimId]) {
+        const invs = await apiFetch(`/claims/${claimId}/invoices`);
+        state.claimInvoicesCache[claimId] = invs || [];
+        if (state.claimExpanded === claimId) renderSiniestrosView();
+    }
+}
 
 let _currentSummaryClaimId = null;
 
@@ -252,6 +385,7 @@ export async function openSummaryModal(claimId) {
             </div>
             <p style="margin-top:10px;"><strong>Resumen:</strong> ${data.executive_summary || "-"}</p>
         </div></div>
+
         <div class="grid-2">
             <div class="card"><div class="card-header"><h2>Historial del Dueño</h2></div><div class="card-body table-wrap"><table><thead><tr><th>Siniestro</th><th>Cobertura</th><th>Fecha</th><th>Monto</th><th>Riesgo</th></tr></thead><tbody>${ownerRows || "<tr><td colspan='5'>Sin historial</td></tr>"}</tbody></table></div></div>
             <div class="card"><div class="card-header"><h2>Historial del Vehículo</h2></div><div class="card-body table-wrap"><table><thead><tr><th>Siniestro</th><th>Cobertura</th><th>Fecha</th><th>Monto</th><th>Riesgo</th></tr></thead><tbody>${vehicleRows || "<tr><td colspan='5'>Sin historial</td></tr>"}</tbody></table></div></div>
@@ -264,8 +398,6 @@ export function closeSummaryModal() {
     if (modal) modal.style.display = "none";
     _currentSummaryClaimId = null;
 }
-
-// ── Agrupacion por asegurado ────────────────────────────
 
 function groupByInsured(claims) {
     const groups = {};
@@ -285,8 +417,6 @@ function renderGroupedRows(groups) {
     `).join("");
 }
 
-// ── Busqueda con debounce ───────────────────────────────
-
 let _searchTimer = null;
 window.debouncedSearch = function(value) {
     if (_searchTimer) clearTimeout(_searchTimer);
@@ -295,12 +425,10 @@ window.debouncedSearch = function(value) {
     }, 250);
 };
 
-// ── Consultar DeepSeek sobre un siniestro ────────────────
-
 window.askDeepSeekAboutClaim = async function(claimId) {
     const c = state.claimsData.find(x => x.id === claimId);
     if (!c) return;
-    const q = `Analiza el siniestro ${c.claim_number} del asegurado ${c.insured_name} (tipo: ${c.claim_type}, cobertura: ${c.cobertura}, monto reclamado: $${c.monto_reclamado || 0}). Score de fraude actual: ${c.fraud_score ?? "N/A"} (${c.fraud_classification || "N/A"}). Por que fue marcado con este riesgo? Que seniales de fraude aplican y que recomendacion das?`;
+    const q = `Analiza el siniestro ${c.claim_number} del asegurado ${c.insured_name} (tipo: ${c.claim_type}, cobertura: ${c.cobertura}, monto reclamado: $${c.monto_reclamado || 0}). Score de fraude actual: ${c.fraud_score ?? "N/A"} (${c.fraud_classification || "N/A"}). ¿Por qué fue marcado con este riesgo? ¿Qué señales de fraude aplican y qué recomendación das?`;
 
     const panel = document.getElementById("chatbot-panel");
     const toggle = document.getElementById("chatbot-toggle");
@@ -323,8 +451,6 @@ window.askDeepSeekAboutClaim = async function(claimId) {
     }
 };
 
-// ── Claim Form ──────────────────────────────────────────
-
 function renderClaimForm() {
     const today = new Date().toISOString().slice(0, 10);
     return `
@@ -338,7 +464,7 @@ function renderClaimForm() {
                 <label>Fecha de Ocurrencia <input id="sn-date" type="date" value="${today}" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;"></label>
                 <label>Ramo
                     <select id="sn-ramo" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;">
-                        ${RAMO_OPTIONS.map(r => `<option value="${r}" ${r === "Vehiculos" ? "selected" : ""}>${r}</option>`).join("")}
+                        ${RAMO_OPTIONS.map(r => `<option value="${r}" ${r === "Vehículos" ? "selected" : ""}>${r}</option>`).join("")}
                     </select>
                 </label>
                 <label>Cobertura
