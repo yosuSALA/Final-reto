@@ -58,7 +58,7 @@ function renderQueue(pending) {
             <div class="queue-list">${preview}</div>
             <div class="queue-actions">
                 <button class="btn btn-ghost btn-sm" onclick="navigateTo('auditorias')">Ver cola</button>
-                <button class="btn btn-primary btn-sm" id="queue-run-btn" onclick="runFullAudit()">Ejecutar auditoria</button>
+                <button class="btn btn-primary btn-sm" id="queue-run-btn" onclick="runFullAudit()">Auditar con IA</button>
             </div>
         `}
     `;

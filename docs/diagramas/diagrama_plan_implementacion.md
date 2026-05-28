@@ -87,8 +87,8 @@ mindmap
       Aislamiento real de datos por perfil
       UUID v4 no adivinable
     Motor dual Reglas + IA
-      Reglas: ~1s, sin API key
-      IA: ~15-30s, más rico
+      Reglas: 1-2s, sin API key
+      IA: 3-8s, más rico
       Mismo pipeline, diferente engine
       Intercambiables sin cambiar DB
 ```

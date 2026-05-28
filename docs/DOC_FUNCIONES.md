@@ -4,12 +4,12 @@ Este documento describe detalladamente las funciones principales de la aplicaci�
 
 ## 🎯 ¿De qué trata esta aplicación?
 
-Esta aplicación es un **Sistema de Auditoría Agéntico** diseñado para aseguradoras de vehículos. Su objetivo es revisar automáticamente las facturas enviadas por los talleres mecánicos para detectar fraudes, errores o cobros excesivos antes de que un agente humano las apruebe para el pago.
+Esta aplicación es un **Sistema de Auditoría Agéntico** multi-ramo (vehículos, salud, vida, hogar, generales). Su objetivo es revisar automáticamente las facturas enviadas por los talleres y proveedores para detectar fraudes, errores o cobros excesivos antes de que un agente humano las apruebe para el pago.
 
 Combina **dos motores complementarios**:
 
 1. **Motor de Reglas determinístico** (default, ~1-2 segundos): aplica las reglas de tarifario, duplicados, cantidades anómalas, incoherencia con el siniestro y re-facturación.
-2. **Motor IA Gemini 2.5 Flash** (opcional, 15-30 segundos): añade razonamiento cualitativo, citación de evidencia y patrones cruzados.
+2. **Motor IA DeepSeek V4 Flash** (5-8 segundos): añade razonamiento cualitativo, citación de evidencia y patrones cruzados.
 
 > **Importante**: aunque puedas auditar la misma factura primero con reglas y luego con IA, el sistema **no genera dos registros**. Existe un único `AuditResult` por factura, y al re-auditar simplemente se reemplaza su contenido y se actualiza el campo `audit_engine` para reflejar el último motor utilizado. No hay duplicación.
 
@@ -31,7 +31,7 @@ Combina **dos motores complementarios**:
 - **Filtro TEST**: incluye o excluye facturas de prueba.
 - **Auditoría JIT (Just-In-Time)**: desde una factura pendiente puedes elegir el motor:
   - ⚡ **Auditar con Reglas** — rápido (~1s), determinístico.
-  - 🤖 **Auditar con IA Gemini** — completo (~15-30s), requiere `GOOGLE_API_KEY`.
+  - 🤖 **Auditar con IA DeepSeek** — completo (~5-8s), requiere `OPENCODE_GO_API_KEY`.
 
 ### 3. Detalle de Auditoría con Re-auditoría sin Duplicación
 
@@ -40,7 +40,7 @@ En la vista detalle (`#audit/{id}`):
 - **Badge del motor**: muestra qué motor produjo el resultado actual (REGLAS o IA).
 - **Botones "Re-auditar Reglas" / "Re-auditar IA"**: re-ejecutan el análisis con el motor elegido. El resultado **reemplaza** al anterior — el `audit_id` no cambia, los hallazgos antiguos se borran y se insertan los nuevos.
 - **Acciones manuales**: Aprobar, Rechazar, Escalar.
-- **Reportes PDF**: vista previa del reporte interno (con riesgo) y notificación al taller (sin riesgo).
+- **Reportes PDF**: vista previa del reporte interno con risk score, hallazgos e items de factura.
 
 ### 4. Motor de Reglas (rápido, default)
 

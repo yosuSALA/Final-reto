@@ -24,13 +24,13 @@ app.use('/api', createProxyMiddleware({
 }));
 
 // ── Static Assets ────────────────────────────────────────
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'frontend')));
 
 // ── SPA Fallback ─────────────────────────────────────────
 // Return index.html for any non-asset route so hash-routing
 // works correctly when the user refreshes the page.
 app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    res.sendFile(path.join(__dirname, 'frontend', 'index.html'));
 });
 
 app.listen(PORT, () => {

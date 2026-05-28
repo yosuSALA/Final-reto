@@ -1,6 +1,7 @@
 import { apiFetch } from "../api.js";
 import { state } from "../state.js";
 import { renderRiskBadge, renderStatusBadge, renderEngineBadge, renderTestBadge } from "../utils.js";
+import { navigateTo } from "../router.js";
 
 export async function loadAuditorias() {
     const include = state.includeTest ? 1 : 0;
@@ -127,7 +128,7 @@ function renderReviewedTable(data) {
                     const bColor = r.status === 'approved' ? 'var(--accent-emerald)' : (r.status === 'rejected' ? 'var(--accent-rose)' : 'var(--accent-warning)');
                     const isFocused = sameWorkflowId(state.workflowFocus?.audit_id, r.audit_id) || state.workflowFocus?.invoice_number === r.invoice_number;
                     return `
-                    <tr class="clickable ${isFocused ? "workflow-row-focus" : ""}" onclick="location.hash='audit/${r.audit_id}'" style="border-left: 4px solid ${bColor}">
+                    <tr class="${isFocused ? "workflow-row-focus" : ""}" style="border-left: 4px solid ${bColor}">
                         <td><span style="color:var(--text-muted);font-family:var(--font-mono)">#${r.audit_id}</span></td>
                         <td><strong>${r.invoice_number}</strong> ${renderTestBadge(r.is_test)}</td>
                         <td>${r.claim_number}</td>
@@ -141,7 +142,7 @@ function renderReviewedTable(data) {
                         </td>
                         <td class="${r.total_overcharge > 0 ? 'price-over' : 'price-ok'}">$${(r.total_overcharge || 0).toFixed(2)}</td>
                         <td>${renderStatusBadge(r.status)}</td>
-                        <td><button class="btn btn-ghost btn-sm">Ver</button></td>
+                        <td><button class="btn btn-primary btn-sm" onclick="event.stopPropagation(); openReviewedAudit(${r.audit_id})">Ver auditoría</button></td>
                     </tr>
                 `}).join("")}
             </tbody>
@@ -173,6 +174,15 @@ export function toggleAuditIncludeTest(checked) {
 export function clearAuditWorkflowFocus() {
     state.workflowFocus = null;
     renderAuditoriasView();
+}
+
+export function openReviewedAudit(auditId) {
+    const targetHash = `audit/${auditId}`;
+    if (location.hash.replace("#", "") === targetHash) {
+        navigateTo("audit-detail", { auditId });
+    } else {
+        location.hash = targetHash;
+    }
 }
 
 function sameWorkflowId(a, b) {

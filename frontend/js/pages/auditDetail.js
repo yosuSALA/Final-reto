@@ -1,20 +1,34 @@
 import { apiFetch, apiPost, API } from "../api.js";
 import { showToast, renderStatusBadge } from "../utils.js";
 import { getPermissions } from "../auth.js";
+import { state } from "../state.js";
 
 export async function loadAuditDetail(auditId) {
     const data = await apiFetch(`/audit-results/${auditId}`);
-    if (!data) return;
-    const perms = getPermissions();
     const page = document.getElementById("page-audit-detail");
+    if (!data) {
+        page.innerHTML = `
+            <button class="back-btn" onclick="location.hash='auditorias'">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                Volver a Auditorías
+            </button>
+            <div class="empty-state">
+                <h3>No se pudo abrir esta auditoría</h3>
+                <p>Puede haber sido eliminada o no pertenece al perfil activo. Vuelve a cargar la lista de revisadas.</p>
+                <button class="btn btn-primary" onclick="location.hash='auditorias'">Ver auditorías</button>
+            </div>`;
+        return;
+    }
+    const perms = getPermissions();
     const riskColor = data.risk_score >= 70 ? "#ef4444" : data.risk_score >= 30 ? "#f59e0b" : "#10b981";
     const circumference = 2 * Math.PI * 45;
     const dashLen = (data.risk_score / 100) * circumference;
     const engine = data.audit_engine || "rules";
-    const engineLabel = engine === "gemini" ? "🤖 IA Gemini" : "⚡ Reglas";
-    const engineColor = engine === "gemini" ? "var(--accent-indigo)" : "var(--accent-emerald)";
+    const isAIEngine = engine !== "rules";
+    const engineLabel = isAIEngine ? "🤖 Agente de IA" : "⚡ Reglas";
+    const engineColor = isAIEngine ? "var(--accent-indigo)" : "var(--accent-emerald)";
     page.innerHTML = `
-        <button class="back-btn" onclick="navigateTo('auditorias')">
+        <button class="back-btn" onclick="location.hash='auditorias'">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
             Volver a Auditorias
         </button>
@@ -36,9 +50,8 @@ export async function loadAuditDetail(auditId) {
             </div>
             <div class="detail-actions">
                 <button class="btn btn-info btn-sm" onclick="reAuditWith(${data.invoice_id}, 'rules')" style="background-color: var(--accent-emerald); color: white;" title="Re-auditar con motor de reglas (rápido)">⚡ Re-auditar Reglas</button>
-                <button class="btn btn-info btn-sm" onclick="reAuditWith(${data.invoice_id}, 'gemini')" style="background-color: var(--accent-indigo); color: white;" title="Re-auditar con Gemini IA (15-30s)">🤖 Re-auditar IA</button>
-                <button class="btn btn-info btn-sm" onclick="previewReport(${data.audit_id}, 'internal')" style="background-color: #475569; color: white;">Reporte Interno</button>
-                ${perms.canNotify ? `<button class="btn btn-info btn-sm" onclick="previewReport(${data.audit_id}, 'workshop')" style="background-color: #475569; color: white;">Notificación Taller</button>` : ""}
+                <button class="btn btn-info btn-sm" onclick="reAuditWith(${data.invoice_id}, 'deepseek')" style="background-color: var(--accent-indigo); color: white;" title="Re-auditar con agente DeepSeek">🤖 Re-auditar IA</button>
+                <button class="btn btn-info btn-sm" onclick="previewReport(${data.audit_id})" style="background-color: #475569; color: white;">Reporte Interno</button>
                 ${perms.canReviewDecision ? `<button class="btn btn-success btn-sm" onclick="auditAction(${data.audit_id}, 'approve')">Aprobar</button>` : ""}
                 ${perms.canReviewDecision ? `<button class="btn btn-danger btn-sm" onclick="auditAction(${data.audit_id}, 'reject')">Rechazar</button>` : ""}
                 ${perms.canReviewDecision ? `<button class="btn btn-warning btn-sm" onclick="auditAction(${data.audit_id}, 'escalate')">Escalar</button>` : ""}
@@ -50,7 +63,6 @@ export async function loadAuditDetail(auditId) {
                 <h3 id="pdf-preview-title" style="margin:0; color:var(--accent-indigo);">Vista Previa</h3>
                 <div style="display:flex; gap:6px;">
                     <button class="btn btn-ghost btn-sm" onclick="document.getElementById('pdf-preview-container').style.display='none'">Cerrar</button>
-                    <button id="pdf-send-btn" class="btn btn-primary btn-sm" onclick="notifyWorkshop(${data.audit_id})" style="display:none;">Confirmar y Enviar al Taller</button>
                 </div>
             </div>
             <iframe id="pdf-iframe" style="width:100%; height:560px; border:none; border-radius:4px; background:white;"></iframe>
@@ -138,32 +150,23 @@ export async function auditAction(auditId, action) {
     }
 }
 
-export async function previewReport(auditId, type = "internal") {
-    showToast(type === "workshop" ? "Generando notificación al taller..." : "Generando reporte interno...", "info");
+export async function previewReport(auditId) {
+    showToast("Generando reporte interno...", "info");
     const container = document.getElementById("pdf-preview-container");
     const iframe = document.getElementById("pdf-iframe");
     const title = document.getElementById("pdf-preview-title");
-    const sendBtn = document.getElementById("pdf-send-btn");
-    if (title) title.textContent = type === "workshop" ? "Vista Previa — Notificación al Taller" : "Vista Previa — Reporte Interno";
-    if (sendBtn) sendBtn.style.display = type === "workshop" ? "" : "none";
-    iframe.src = `${API}/audit-results/${auditId}/report-preview?type=${type}&t=${Date.now()}`;
+    if (title) title.textContent = "Vista Previa — Reporte Interno";
+    const token = encodeURIComponent(state.currentProfileToken || "");
+    iframe.src = `${API}/audit-results/${auditId}/report-preview?profile_token=${token}&t=${Date.now()}`;
     container.style.display = "block";
     container.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-export async function notifyWorkshop(auditId) {
-    showToast("Enviando reporte...", "info");
-    const result = await apiPost(`/audit-results/${auditId}/notify`);
-    if (result) {
-        showToast(result.message, "success");
-        document.getElementById("pdf-preview-container").style.display = "none";
-    }
-}
-
 export async function reAuditWith(invoiceId, engine) {
-    const label = engine === "gemini" ? "IA Gemini" : "Reglas";
+    const isAIEngine = engine !== "rules";
+    const label = isAIEngine ? "Agente IA DeepSeek" : "Reglas";
     showToast(`Re-auditando con ${label}...`, "info");
-    const path = engine === "gemini" ? `/audit-ai/${invoiceId}` : `/audit-rules/${invoiceId}`;
+    const path = isAIEngine ? `/audit-ai/${invoiceId}` : `/audit-rules/${invoiceId}`;
     const result = await apiPost(path);
     if (result) {
         showToast(`Resultado actualizado (motor: ${engine}). audit_id sin cambios.`, "success");

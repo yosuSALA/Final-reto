@@ -1,4 +1,4 @@
-import { apiFetch, API } from "../api.js";
+import { apiFetch, apiPost, API } from "../api.js";
 import { state } from "../state.js";
 import { showToast } from "../utils.js";
 
@@ -142,9 +142,8 @@ export async function genRandomFactura(scenario) {
     const labels = { limpia: "limpia", sobrecobro: "sobrecobro", fraude: "fraude", mixed: "aleatoria" };
     showToast(`Generando factura ${labels[scenario]}...`, "info");
     try {
-        const res = await fetch(`${API}/test-pdfs/random?scenario=${scenario}&count=1`, { method: "POST" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
+        const data = await apiPost(`/test-pdfs/random?scenario=${scenario}&count=1`);
+        if (!data) throw new Error("No se pudo generar la factura de prueba");
         if (data.files && data.files.length) {
             state.generatedFacturas.unshift(data.files[0]);
             const list = document.getElementById("generated-list");
@@ -233,7 +232,8 @@ export async function handleUploadFile(file) {
     fd.append("is_test", state.uploadIsTest ? "1" : "0");
 
     try {
-        const res = await fetch(`${API}/audit-pdf`, { method: "POST", body: fd });
+        const headers = state.currentProfileToken ? { "X-Profile-Token": state.currentProfileToken } : {};
+        const res = await fetch(`${API}/audit-pdf`, { method: "POST", headers, body: fd });
         if (!res.ok) {
             const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
             throw new Error(err.detail || "Error desconocido");

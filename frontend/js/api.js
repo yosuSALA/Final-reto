@@ -48,7 +48,7 @@ export async function apiFetch(endpoint) {
         return await res.json();
     } catch (e) {
         console.error(`API Error: ${endpoint}`, e);
-        showToast("Error de conexion con el servidor", "error");
+        showToast(e.message || "Error de conexión con el servidor", "error");
         return null;
     }
 }

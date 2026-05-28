@@ -14,15 +14,15 @@ export async function loadPendingDetail(invoiceId) {
             <p style="color:var(--text-muted); margin-bottom:24px;">Elige el motor de auditoría:</p>
             <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
                 <button class="btn btn-success" id="btn-jit-rules" onclick="triggerRulesAudit(${invoiceId})" style="font-size:1.05rem; padding:12px 24px;">
-                    ⚡ Auditar con Reglas (rápido, ~1s)
+                    ⚡ Auditar con Reglas (rápido, 1-2s)
                 </button>
                 <button class="btn btn-primary" id="btn-jit-ai" onclick="triggerJitAudit(${invoiceId})" style="font-size:1.05rem; padding:12px 24px;">
-                    🤖 Auditar con IA Gemini (15-30s)
+                    🤖 Auditar con Agente de IA
                 </button>
             </div>
             <p style="color:var(--text-muted); font-size:0.8rem; margin-top:14px;">
                 Reglas usa el motor determinístico (tarifario + cantidades + duplicados + coherencia).<br>
-                Gemini añade razonamiento adicional pero requiere API key y es más lento.
+                El agente de IA añade razonamiento avanzado con DeepSeek v4 Flash.
             </p>
         </div>
     `;

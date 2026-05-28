@@ -2,12 +2,12 @@
 import { navigateTo, routeFromHash } from "./router.js";
 import { showToast } from "./utils.js";
 import {
-    loadDashboard, loadAuditPanel, runFullAudit, toggleIncludeTest, triggerGeminiInsight,
+    loadDashboard, loadAuditPanel, runFullAudit, toggleIncludeTest, triggerDeepSeekInsight,
     skipAuditGuide, reactivateAuditGuide, openWorkflowTarget, nextDemoGuide, prevDemoGuide,
 } from "./pages/dashboard.js";
 import { loadClaimWorkspace, switchWorkspaceTab } from "./pages/claimWorkspace.js";
 import {
-    loadAuditorias, setAuditSearch, setAuditTab, toggleAuditIncludeTest, clearAuditWorkflowFocus,
+    loadAuditorias, setAuditSearch, setAuditTab, toggleAuditIncludeTest, clearAuditWorkflowFocus, openReviewedAudit,
 } from "./pages/auditorias.js";
 import {
     loadTarifario, toggleTariffForm, submitNewTariff, deleteTariff,
@@ -20,7 +20,6 @@ import {
 } from "./components/csvUpload.js";
 import {
     loadSiniestros, toggleClaimPreview,
-    openNotifyModal, closeNotifyModal, saveNotifyConfig,
     openSummaryModal, closeSummaryModal,
     setClaimsSearch, setClaimsTypeFilter, setClaimsStatusFilter, setClaimsSort, clearClaimsWorkflowFocus,
     toggleClaimForm, submitNewClaim,
@@ -33,7 +32,7 @@ import {
     loadPendingDetail, triggerJitAudit, triggerRulesAudit,
 } from "./pages/pendingDetail.js";
 import {
-    loadAuditDetail, auditAction, previewReport, notifyWorkshop, reAuditWith,
+    loadAuditDetail, auditAction, previewReport, reAuditWith,
 } from "./pages/auditDetail.js";
 import { refreshAuditQueue, toggleAuditQueueMinimized } from "./components/auditQueue.js";
 import { initChatbotBubble } from "./components/chatbotBubble.js";
@@ -68,24 +67,23 @@ if (savedTheme === "dark") {
 
 Object.assign(window, {
     navigateTo, showToast, loadDashboard,
-    runFullAudit, toggleIncludeTest, triggerGeminiInsight,
+    runFullAudit, toggleIncludeTest, triggerDeepSeekInsight,
     loadAuditPanel, skipAuditGuide, reactivateAuditGuide,
     openWorkflowTarget, nextDemoGuide, prevDemoGuide,
     loadClaimWorkspace, switchWorkspaceTab,
-    setAuditSearch, setAuditTab, toggleAuditIncludeTest, clearAuditWorkflowFocus,
+    setAuditSearch, setAuditTab, toggleAuditIncludeTest, clearAuditWorkflowFocus, openReviewedAudit,
     toggleTariffForm, submitNewTariff, deleteTariff,
     toggleTarifCat, toggleAllTarif, editTariff, cancelTariff, saveTariff,
     showCsvSchemaModal, closeCsvModal, triggerCsvFilePicker,
     handleCsvFileChange, submitCsvUpload, downloadCsvTemplate,
     toggleClaimPreview,
-    openNotifyModal, closeNotifyModal, saveNotifyConfig,
     openSummaryModal, closeSummaryModal,
     setClaimsSearch, setClaimsTypeFilter, setClaimsStatusFilter, setClaimsSort, clearClaimsWorkflowFocus,
     toggleClaimForm, submitNewClaim,
     genRandomFactura, clearGeneratedFacturas, setUploadIsTest,
     handleUploadFile, auditTestPdfDirect,
     triggerJitAudit, triggerRulesAudit,
-    auditAction, previewReport, notifyWorkshop, reAuditWith,
+    auditAction, previewReport, reAuditWith,
     toggleTheme, signOut, toggleAuditQueueMinimized,
 });
 

@@ -341,7 +341,7 @@ function renderAuditTrail(data) {
                 ${audit_trail.map(a => `
                 <tr class="clickable" onclick="location.hash='audit/${a.audit_id}'">
                     <td>#${a.audit_id}</td>
-                    <td><span class="badge ${a.engine === 'gemini' ? 'badge-info' : 'badge-warning'}">${a.engine}</span></td>
+                    <td><span class="badge ${a.engine === 'rules' ? 'badge-warning' : 'badge-info'}">${a.engine === 'rules' ? 'rules' : 'deepseek'}</span></td>
                     <td>${renderRiskBadge(a.risk_score)}</td>
                     <td>${renderStatusBadge(a.status)}</td>
                     <td style="color:${a.total_overcharge>0?'#ef4444':'#10b981'}">$${fmt(a.total_overcharge)}</td>

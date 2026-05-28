@@ -694,34 +694,7 @@ def get_claims(
     scope: ProfileScope = Depends(get_scope),
     db: Session = Depends(get_db),
 ):
-    siniestros = scope.siniestros().filter(Siniestro.ramo == Ramo.VEHICULOS).all()
-    output = []
-    for s in siniestros:
-        invoices = scope.invoices().filter(Invoice.siniestro_id == s.id_siniestro).all()
-        audit = scope.audit_results().filter(AuditResult.siniestro_id == s.id_siniestro).first()
-        owner_name = s.id_asegurado
-        if s.asegurado_rel and s.asegurado_rel.nombre:
-            owner_name = s.asegurado_rel.nombre
-        vehicle_plate = s.vehiculo_rel.placa if s.vehiculo_rel and s.vehiculo_rel.placa else "N/D"
-        if s.vehiculo_rel:
-            vehicle = " ".join([x for x in [s.vehiculo_rel.marca, s.vehiculo_rel.modelo, str(s.vehiculo_rel.anio or "")] if x]).strip()
-        else:
-            vehicle = "N/D"
-        output.append({
-            "id": s.id_siniestro,
-            "claim_number": f"SIN-{s.id_siniestro}",
-            "claim_type": s.ramo.value,
-            "description": s.descripcion or "",
-            "vehicle_plate": vehicle_plate,
-            "vehicle": vehicle or "N/D",
-            "insured_name": owner_name,
-            "policy_number": s.id_poliza,
-            "incident_date": s.fecha_ocurrencia.isoformat() if s.fecha_ocurrencia else None,
-            "invoice_count": len(invoices),
-            "audit_status": audit.status.value if audit else "pending",
-            "risk_score": audit.risk_score if audit else None,
-        })
-    return output
+    return [_siniestro_to_dict(s, scope) for s in scope.siniestros().all()]
 
 
 # ── Creación manual y CSV de Siniestros ────────────────
@@ -873,6 +846,19 @@ def _siniestro_to_dict(s: Siniestro, scope: ProfileScope) -> dict:
         "insured_name": owner_name,
         "policy_number": s.id_poliza,
         "incident_date": s.fecha_ocurrencia.isoformat() if s.fecha_ocurrencia else None,
+        "report_date": s.fecha_reporte.isoformat() if s.fecha_reporte else None,
+        "monto_reclamado": s.monto_reclamado or 0,
+        "monto_estimado": s.monto_estimado or 0,
+        "monto_pagado": s.monto_pagado or 0,
+        "sucursal": s.sucursal or "",
+        "beneficiario": s.beneficiario or "",
+        "documentos_completos": bool(s.documentos_completos),
+        "dias_desde_inicio_poliza": s.dias_desde_inicio_poliza,
+        "dias_desde_fin_poliza": s.dias_desde_fin_poliza,
+        "dias_entre_ocurrencia_reporte": s.dias_entre_ocurrencia_reporte,
+        "historial_siniestros_asegurado": s.historial_siniestros_asegurado or 0,
+        "fraud_score": s.fraud_score or 0,
+        "fraud_classification": s.fraud_classification or "",
         "invoice_count": len(invoices),
         "audit_status": audit.status.value if audit else "pending",
         "risk_score": audit.risk_score if audit else None,
@@ -1316,7 +1302,7 @@ def escalate_audit(
     return {"status": "escalated", "audit_id": audit_id}
 
 
-# ── Auditoría IA (Gemini 2.5 Flash) ─────────────────────
+# ── Auditoría IA (DeepSeek) ─────────────────────────────
 
 def _build_invoice_dict(invoice, items) -> dict:
     return {
@@ -1358,7 +1344,7 @@ def _save_ai_result(db, invoice, siniestro, ai_result: dict, profile_id: str = N
         existing.total_overcharge = ai_result["total_overcharge"]
         existing.summary = ai_result.get("notas_agente", "")
         existing.agent_notes = json.dumps({"ai": True, "model": ai_result.get("model_used", "")}, ensure_ascii=False)
-        existing.audit_engine = "gemini"
+        existing.audit_engine = "deepseek"
         existing.is_test = is_test
         existing.audited_at = datetime.utcnow()
         db.query(AuditFinding).filter(AuditFinding.audit_result_id == existing.id).delete()
@@ -1373,7 +1359,7 @@ def _save_ai_result(db, invoice, siniestro, ai_result: dict, profile_id: str = N
             total_overcharge=ai_result["total_overcharge"],
             summary=ai_result.get("notas_agente", ""),
             agent_notes=json.dumps({"ai": True, "model": ai_result.get("model_used", "")}, ensure_ascii=False),
-            audit_engine="gemini",
+            audit_engine="deepseek",
             is_test=is_test,
             audited_at=datetime.utcnow(),
         )
@@ -1413,8 +1399,8 @@ def _get_tariff_list_for_scope(scope: ProfileScope) -> list:
     ]
 
 
-def _run_gemini_audit(invoice_id: int, scope: ProfileScope, db: Session) -> dict:
-    from backend.gemini_auditor import GeminiAuditor
+def _run_deepseek_audit(invoice_id: int, scope: ProfileScope, db: Session) -> dict:
+    from backend.deepseek_auditor import DeepSeekAuditor
 
     invoice = scope.get_invoice(invoice_id)
     if not invoice:
@@ -1426,7 +1412,7 @@ def _run_gemini_audit(invoice_id: int, scope: ProfileScope, db: Session) -> dict
     items = db.query(InvoiceItem).filter(InvoiceItem.invoice_id == invoice_id).all()
 
     # Historial de facturas del mismo perfil para detección cruzada
-    all_invoices = scope.invoices().all()
+    all_invoices = scope.invoices().order_by(Invoice.created_at.desc()).limit(20).all()
     invoice_history = [
         {
             "id": inv.id, "invoice_number": inv.invoice_number,
@@ -1439,7 +1425,7 @@ def _run_gemini_audit(invoice_id: int, scope: ProfileScope, db: Session) -> dict
     ]
 
     try:
-        auditor = GeminiAuditor()
+        auditor = DeepSeekAuditor()
         ai_result = auditor.audit(
             invoice=_build_invoice_dict(invoice, items),
             claim=_build_siniestro_dict(siniestro),
@@ -1449,7 +1435,7 @@ def _run_gemini_audit(invoice_id: int, scope: ProfileScope, db: Session) -> dict
     except ValueError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error Gemini: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error DeepSeek: {str(e)}")
 
     audit_result = _save_ai_result(db, invoice, siniestro, ai_result, profile_id=scope.profile_id)
 
@@ -1483,7 +1469,7 @@ def audit_invoice_ai(
     db: Session = Depends(get_db),
 ):
     scope.require_write("audit_results")
-    return _run_gemini_audit(invoice_id, scope, db)
+    return _run_deepseek_audit(invoice_id, scope, db)
 
 
 @app.post("/api/audit-ai-all")
@@ -1492,33 +1478,80 @@ def audit_all_ai(
     db: Session = Depends(get_db),
 ):
     scope.require_write("audit_results")
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from backend.deepseek_auditor import DeepSeekAuditor
+
     invoices = scope.invoices().all()
     results, errors = [], []
-    for inv in invoices:
-        try:
-            results.append(_run_gemini_audit(inv.id, scope, db))
-        except HTTPException as e:
-            errors.append({"invoice_id": inv.id, "error": e.detail})
-    return {"audited": len(results), "errors": errors, "results": results}
+    jobs = []
+    all_invoices = scope.invoices().order_by(Invoice.created_at.desc()).limit(20).all()
+    invoice_history = [
+        {
+            "id": inv.id,
+            "invoice_number": inv.invoice_number,
+            "claim_number": f"SIN-{inv.siniestro.id_siniestro}" if inv.siniestro else "",
+            "claim_type": inv.siniestro.ramo.value if inv.siniestro and inv.siniestro.ramo else "",
+            "workshop_ruc": inv.workshop.ruc if inv.workshop else "",
+            "total": inv.total or 0.0,
+        }
+        for inv in all_invoices
+    ]
 
+    for invoice in invoices:
+        siniestro = scope.get_siniestro(invoice.siniestro_id)
+        if not siniestro:
+            errors.append({"invoice_id": invoice.id, "error": "Siniestro no encontrado."})
+            continue
+        items = db.query(InvoiceItem).filter(InvoiceItem.invoice_id == invoice.id).all()
+        jobs.append({
+            "invoice": invoice,
+            "siniestro": siniestro,
+            "invoice_payload": _build_invoice_dict(invoice, items),
+            "claim_payload": _build_siniestro_dict(siniestro),
+        })
 
-@app.post("/api/audit-gemini/{invoice_id}")
-def audit_invoice_gemini(
-    invoice_id: int,
+    tariff_items = _get_tariff_list_for_scope(scope)
+    max_workers = max(1, min(int(os.environ.get("AI_AUDIT_CONCURRENCY", "4") or 4), 8))
+
+    def run_job(job):
+        auditor = DeepSeekAuditor()
+        return job, auditor.audit(
+            invoice=job["invoice_payload"],
+            claim=job["claim_payload"],
+            tariff_items=tariff_items,
+            invoice_history=invoice_history,
+        )
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_jobs = {executor.submit(run_job, job): job for job in jobs}
+        for future in as_completed(future_jobs):
+            original_job = future_jobs[future]
+            try:
+                job, ai_result = future.result()
+                audit_result = _save_ai_result(db, job["invoice"], job["siniestro"], ai_result, profile_id=scope.profile_id)
+                results.append({
+                    "audit_id": audit_result.id,
+                    "invoice_id": job["invoice"].id,
+                    "invoice_number": job["invoice"].invoice_number,
+                    "status": audit_result.status.value,
+                    "risk_score": ai_result["risk_score"],
+                    "total_overcharge": ai_result["total_overcharge"],
+                    "model_used": ai_result["model_used"],
+                })
+            except ValueError as e:
+                errors.append({"invoice_id": original_job["invoice"].id, "error": str(e)})
+            except Exception as e:
+                errors.append({"invoice_id": original_job["invoice"].id, "error": f"Error DeepSeek: {str(e)}"})
+
+    return {"audited": len(results), "errors": errors, "results": results, "concurrency": max_workers}
+
+@app.post("/api/audit-deepseek-batch")
+def audit_deepseek_batch(
     scope: ProfileScope = Depends(get_scope),
     db: Session = Depends(get_db),
 ):
     scope.require_write("audit_results")
-    return _run_gemini_audit(invoice_id, scope, db)
-
-
-@app.post("/api/audit-gemini-batch")
-def audit_gemini_batch(
-    scope: ProfileScope = Depends(get_scope),
-    db: Session = Depends(get_db),
-):
-    scope.require_write("audit_results")
-    from backend.gemini_auditor import GeminiAuditor
+    from backend.deepseek_auditor import DeepSeekAuditor
 
     invoices_db = scope.invoices().all()
     siniestros_db = scope.siniestros().all()
@@ -1537,14 +1570,14 @@ def audit_gemini_batch(
             siniestros_payload.append(_build_siniestro_dict(siniestro))
 
     try:
-        auditor = GeminiAuditor()
+        auditor = DeepSeekAuditor()
         batch_result = auditor.batch_audit(
             invoices=invoices_payload, claims=siniestros_payload, tariff_items=tariff_list,
         )
     except ValueError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error Gemini batch: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error DeepSeek batch: {str(e)}")
 
     inv_by_number = {inv.invoice_number: inv for inv in invoices_db}
     saved = []
@@ -1616,16 +1649,61 @@ async def audit_pdf_upload(
 
     siniestro = None
     effective_ref = (claim_number or "").strip() or pdf_claim_number or pdf_policy
+    effective_ref = (effective_ref or "").replace(" ", "").upper()
     if effective_ref:
         siniestro = scope.siniestros().filter(Siniestro.id_poliza == effective_ref).first()
     if not siniestro:
-        placeholder_poliza = effective_ref or f"PDF-{file.filename[:20]}"
+        placeholder_poliza = (effective_ref or f"PDF-{file.filename}")[:20]
+        insured_id = (pdf_insured[:50] if pdf_insured else "ASEGURADO_PDF")
+
+        insured = db.query(AseguradoSintetico).filter(
+            AseguradoSintetico.id_asegurado == insured_id,
+            AseguradoSintetico.profile_id == scope.profile_id,
+        ).first()
+        if not insured:
+            insured = AseguradoSintetico(
+                id_asegurado=insured_id,
+                profile_id=scope.profile_id,
+                nombre=pdf_insured or "Asegurado desde PDF",
+                segmento="particular",
+                antiguedad=1,
+                ciudad="Por determinar",
+                numero_polizas=1,
+                reclamos_12m=0,
+                mora_actual=0,
+                score_cliente_simulado=100.0,
+            )
+            db.add(insured)
+            db.flush()
+
+        poliza = db.query(Poliza).filter(
+            Poliza.id_poliza == placeholder_poliza,
+            Poliza.profile_id == scope.profile_id,
+        ).first()
+        if not poliza:
+            poliza = Poliza(
+                id_poliza=placeholder_poliza,
+                profile_id=scope.profile_id,
+                id_asegurado=insured.id_asegurado,
+                ramo=ramo_enum,
+                fecha_inicio=datetime.utcnow(),
+                fecha_fin=datetime.utcnow(),
+                prima=0.0,
+                suma_asegurada=0.0,
+                deducible=0.0,
+                canal_venta="import_pdf",
+                ciudad="Por determinar",
+                estado_poliza="activa",
+            )
+            db.add(poliza)
+            db.flush()
+
         siniestro = scope.siniestros().filter(Siniestro.id_poliza == placeholder_poliza).first()
         if not siniestro:
             siniestro = Siniestro(
                 profile_id=scope.profile_id,
                 id_poliza=placeholder_poliza,
-                id_asegurado=pdf_insured[:50] if pdf_insured else "Desconocido",
+                id_asegurado=insured.id_asegurado,
                 ramo=ramo_enum,
                 cobertura=Cobertura.OTRO,
                 fecha_ocurrencia=datetime.utcnow(),
@@ -1859,11 +1937,17 @@ def _build_full_audit_dict(scope: ProfileScope, db: Session, audit: AuditResult)
 @app.get("/api/audit-results/{audit_id}/report-preview")
 def preview_workshop_report(
     audit_id: int,
-    type: str = "internal",
-    scope: ProfileScope = Depends(get_scope),
+    profile_token: str = "",
+    x_profile_token: str = Header(None, alias="X-Profile-Token"),
     db: Session = Depends(get_db),
 ):
-    from backend.pdf_generator import generate_audit_report_pdf, generate_workshop_notification_pdf
+    from backend.pdf_generator import generate_audit_report_pdf
+
+    token = x_profile_token or profile_token
+    profile = verify_profile_token(token, db)
+    if not profile:
+        raise HTTPException(status_code=403, detail="Token de perfil requerido para previsualizar reportes.")
+    scope = ProfileScope(db, profile)
 
     audit = scope.get_audit_result(audit_id)
     if not audit:
@@ -1871,10 +1955,7 @@ def preview_workshop_report(
 
     audit_data, workshop_name = _build_full_audit_dict(scope, db, audit)
     try:
-        if type == "workshop":
-            pdf_path = generate_workshop_notification_pdf(audit_data, workshop_name)
-        else:
-            pdf_path = generate_audit_report_pdf(audit_data, workshop_name)
+        pdf_path = generate_audit_report_pdf(audit_data, workshop_name)
         return FileResponse(
             path=pdf_path, media_type="application/pdf",
             headers={
@@ -1885,105 +1966,6 @@ def preview_workshop_report(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generando PDF: {str(e)}")
-
-
-@app.post("/api/audit-results/{audit_id}/notify")
-def notify_workshop(
-    audit_id: int,
-    scope: ProfileScope = Depends(get_scope),
-    db: Session = Depends(get_db),
-):
-    from backend.pdf_generator import generate_workshop_notification_pdf
-
-    audit = scope.get_audit_result(audit_id)
-    if not audit:
-        raise HTTPException(status_code=404, detail="Auditoría no encontrada o no pertenece a este perfil.")
-
-    invoice = scope.get_invoice(audit.invoice_id)
-    if not invoice:
-        raise HTTPException(status_code=400, detail="Falta información de la factura.")
-
-    workshop = scope.get_workshop(invoice.workshop_id) if invoice.workshop_id else None
-    workshop_name = workshop.name if workshop else "Taller Desconocido"
-
-    recipients = []
-    if workshop and workshop.email:
-        recipients.append(workshop.email)
-
-    siniestro = scope.get_siniestro(audit.siniestro_id)
-    if siniestro and siniestro.descripcion:
-        try:
-            meta = json.loads(siniestro.descripcion)
-            extra_emails_raw = meta.get("notify_emails", "")
-            for e in str(extra_emails_raw).split(","):
-                e = e.strip()
-                if e and e not in recipients:
-                    recipients.append(e)
-        except Exception:
-            pass
-
-    if not recipients:
-        recipients = [
-            "auditor.jefe@aseguradora-hackiathon.ec",
-            "siniestros@aseguradora-hackiathon.ec",
-        ]
-
-    audit_data, _ = _build_full_audit_dict(scope, db, audit)
-    try:
-        pdf_path = generate_workshop_notification_pdf(audit_data, workshop_name)
-        simulated_log = [f"✅ EMAIL SIMULADO → {addr}" for addr in recipients]
-        for addr in recipients:
-            print(f"✅ EMAIL ENVIADO SIMULADO: Para: {addr} | Adjunto: {os.path.basename(pdf_path)}")
-        return {
-            "status": "success",
-            "message": f"Notificación enviada a {len(recipients)} destinatario(s)",
-            "recipients": recipients, "pdf_path": pdf_path, "log": simulated_log,
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error generando PDF: {str(e)}")
-
-
-@app.put("/api/claims/{claim_id}/notify-config")
-def update_claim_notify_config(
-    claim_id: int,
-    data: dict,
-    scope: ProfileScope = Depends(get_scope),
-    db: Session = Depends(get_db),
-):
-    scope.require_write("siniestros")
-    siniestro = scope.get_siniestro(claim_id)
-    if not siniestro:
-        raise HTTPException(status_code=404, detail="Siniestro no encontrado o no pertenece a este perfil.")
-    notify_emails = data.get("notify_emails", "")
-    try:
-        meta = json.loads(siniestro.descripcion or "{}")
-    except Exception:
-        meta = {"original_description": siniestro.descripcion or ""}
-    meta["notify_emails"] = notify_emails
-    siniestro.descripcion = json.dumps(meta, ensure_ascii=False)
-    db.commit()
-    return {"status": "ok", "claim_id": claim_id, "notify_emails": notify_emails}
-
-
-@app.get("/api/claims/{claim_id}/notify-config")
-def get_claim_notify_config(
-    claim_id: int,
-    scope: ProfileScope = Depends(get_scope),
-):
-    siniestro = scope.get_siniestro(claim_id)
-    if not siniestro:
-        raise HTTPException(status_code=404, detail="Siniestro no encontrado o no pertenece a este perfil.")
-    try:
-        meta = json.loads(siniestro.descripcion or "{}")
-        notify_emails = meta.get("notify_emails", "")
-    except Exception:
-        notify_emails = ""
-    workshop_email = ""
-    for inv in (siniestro.invoices or []):
-        if inv.profile_id == scope.profile_id and inv.workshop and inv.workshop.email:
-            workshop_email = inv.workshop.email
-            break
-    return {"claim_id": claim_id, "workshop_email": workshop_email, "notify_emails": notify_emails}
 
 
 # ── Scoring de fraude y chatbot ─────────────────────────
@@ -2565,13 +2547,13 @@ def get_claim_workspace(
     }
 
 
-@app.post("/api/intelligence/gemini-insight")
-async def gemini_insight(
+@app.post("/api/intelligence/deepseek-insight")
+async def deepseek_insight(
     data: dict,
     scope: ProfileScope = Depends(get_scope),
     db: Session = Depends(get_db),
 ):
-    """Generate a Gemini insight for a specific context. Always explicit, never automatic."""
+    """Generate a DeepSeek insight for a specific context. Always explicit, never automatic."""
     insight_type = data.get("type", "")
     context = data.get("context", {})
     role = data.get("role", "analista")
@@ -2615,14 +2597,33 @@ Context data:
 Provide your analysis."""
 
     try:
-        import google.generativeai as genai
-        import os
-        genai.configure(api_key=os.environ.get("GEMINI_API_KEY", ""))
-        model = genai.GenerativeModel(
-            model_name="gemini-2.5-flash",
-            system_instruction=system_prompt,
+        api_key = os.environ.get("OPENCODE_GO_API_KEY") or os.environ.get("DEEPSEEK_API_KEY") or ""
+        api_base = os.environ.get("OPENCODE_GO_API_BASE") or os.environ.get("DEEPSEEK_API_BASE") or "https://api.deepseek.com/v1"
+        model = os.environ.get("OPENCODE_GO_MODEL") or os.environ.get("DEEPSEEK_MODEL") or "deepseek-chat"
+        if not api_key:
+            raise ValueError("Falta OPENCODE_GO_API_KEY o DEEPSEEK_API_KEY")
+        req_body = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": 0.2,
+        }
+        import urllib.request
+        url = f"{api_base.rstrip('/')}/chat/completions"
+        request = urllib.request.Request(
+            url,
+            data=json.dumps(req_body).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "User-Agent": "AseguradoraDelSur/1.0",
+            },
         )
-        response = model.generate_content(user_prompt)
-        return {"status": "success", "insight": response.text, "type": insight_type}
+        with urllib.request.urlopen(request, timeout=45) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        text = payload.get("choices", [{}])[0].get("message", {}).get("content", "")
+        return {"status": "success", "insight": text, "type": insight_type}
     except Exception as e:
         return {"status": "error", "insight": f"Servicio de IA no disponible: {str(e)}", "type": insight_type}

@@ -1,6 +1,6 @@
-# Aseguradora del Sur - Prototipo Antifraude Agentico
+# Miraclex — Detector Agentico de Fraude en Siniestros | Hackathon 2026
 
-Sistema agentico hibrido para deteccion de posibles fraudes en siniestros de vehiculos. Genera alertas explicables, score de riesgo (semaforo), auditoria de facturas PDF y asistencia conversacional para analistas.
+Plataforma inteligente de Aseguradora del Sur para auditar automaticamente facturas de siniestros (vehiculares, salud, vida, hogar, generales), priorizar casos criticos y proteger la reserva tecnica. Detecta fraude, sobrecobros, duplicados e incoherencias antes del pago, combinando un motor de reglas deterministicas con DeepSeek V4 Flash para evaluacion de riesgo.
 
 ---
 
@@ -27,7 +27,7 @@ El análisis manual de estos factores es lento, costoso y propenso a errores, lo
 ---
 
 ## 3. Objetivos
-- Cargar y procesar datos sinteticos de siniestros de vehiculos.
+- Cargar y procesar datos sinteticos de siniestros multi-ramo (vehiculos, salud, vida, hogar, generales).
 - Detectar senales de posible fraude y calcular score 0-100.
 - Clasificar en Verde, Amarillo y Rojo con accion sugerida.
 - Explicar por que cada caso fue marcado.
@@ -40,7 +40,7 @@ Este prototipo abarca:
 1. Ingestión y estructuración de pólizas, vehículos, asegurados, documentos y siniestros.
 2. Cálculo determinístico de las 14 señales de la rúbrica y las 7 reglas críticas (RF01-RF07).
 3. Auditoría automatizada de facturas (SRI) extrayendo texto de PDFs y contrastándolo con el tarifario homologado.
-4. Asistencia por chat usando OpenCode Go (DeepSeek v4 Flash) y Gemini opcional.
+4. Asistencia por chat usando OpenCode Go (DeepSeek v4 Flash).
 5. Interfaz de usuario SPA con cola de auditoría y chat interactivo colapsables con animaciones de transiciones.
 
 No incluye: acusacion formal, conclusion legal, rechazo automatico de siniestros.
@@ -50,10 +50,11 @@ No incluye: acusacion formal, conclusion legal, rechazo automatico de siniestros
 ## 5. Arquitectura y Stack Tecnológico
 La arquitectura detallada y el flujo se describen en [docs/arquitectura.md](docs/arquitectura.md).
 
-- **Backend**: Python 3.10+ / FastAPI.
+- **Backend**: Python 3.10+ / FastAPI (puerto 8000).
+- **Frontend Server**: Node.js / Express (puerto 3000, proxy API y SPA estática).
 - **Base de Datos**: SQLite con SQLAlchemy.
 - **Modelado de Datos**: 8 tablas normalizadas (ver [docs/modelo_datos.md](docs/modelo_datos.md)).
-- **Motores de IA**: OpenCode Go (DeepSeek v4 Flash por defecto) y Google Gemini 2.5 Flash.
+- **Motores de IA**: OpenCode Go (DeepSeek v4 Flash).
 - **Frontend**: HTML5 / CSS Vanilla / JavaScript Modular (sin paso de compilación).
 - **Procesamiento de Archivos**: pdfplumber (OCR/Extracción Facturas SRI) y reportlab (Generador de Informes PDF).
 
@@ -104,8 +105,8 @@ Nota operativa: el score se usa para priorizar revision humana, no para decision
 ---
 
 ## 9. Uso de Inteligencia Artificial (IA)
-- **DeepSeek (Chatbot principal)**: Empleado para reescribir y estructurar en lenguaje natural formal las respuestas a las consultas del chatbot conversacional.
-- **Gemini 2.5 Flash (Auditor e IA Fallback)**: Utilizado para auditar facturas complejas de talleres mediante técnicas de Chain-of-Thought y Self-Reflection, y como fallback del chatbot si la API de DeepSeek está inactiva.
+- **DeepSeek V4 Flash (Chatbot principal)**: Empleado para reescribir y estructurar en lenguaje natural formal las respuestas a las consultas del chatbot conversacional.
+- **DeepSeek V4 Flash (Auditor de Facturas)**: Utilizado para auditar facturas complejas de talleres mediante técnicas de Chain-of-Thought y Self-Reflection, evaluando riesgo de sobrecobro e inconsistencias.
 - **Similitud semántica local**: Lógica NLP local para comparar narrativas duplicadas sin costo de tokens ni latencia innecesaria.
 
 *La documentación sobre la integración se encuentra en [docs/uso_ia.md](docs/uso_ia.md).*
@@ -126,9 +127,6 @@ OPENCODE_GO_MODEL=deepseek-v4-flash
 DEEPSEEK_API_KEY=
 DEEPSEEK_API_BASE=https://api.deepseek.com
 DEEPSEEK_MODEL=deepseek-chat
-
-# Opcional: Gemini para auditoría IA avanzada
-GOOGLE_API_KEY=
 ```
 
 Nota: el backend prioriza `OPENCODE_GO_API_KEY` y usa ese gateway como fuente por defecto del chatbot.
@@ -140,9 +138,15 @@ pip install -r backend/requirements.txt
 ```
 
 ### 3. Inicializacion y Ejecucion del Servidor
-Ejecuta FastAPI en puerto 8010:
+Primero, inicia el Frontend (Express, puerto 3000):
 ```bash
-python -m uvicorn backend.main:app --reload --port 8010
+npm install
+node server.js
+```
+
+En otra terminal, inicia el Backend (FastAPI, puerto 8000):
+```bash
+python -m uvicorn backend.main:app --reload --port 8000
 ```
 La app inicializa SQLite y carga data sintetica de demo.
 
@@ -153,8 +157,9 @@ python -m unittest tests/test_fraud_rules.py
 ```
 
 ### 5. Acceso Web
-- App: `http://localhost:8010/app/`
-- Landing: `http://localhost:8010/`
+- SPA Frontend: `http://localhost:3000/`
+- Landing / API Backend: `http://localhost:8000/`
+- App principal: `http://localhost:8000/app/`
 
 ---
 
@@ -163,9 +168,10 @@ python -m unittest tests/test_fraud_rules.py
 2. **Consultar al Asistente Antifraude**: Abre la burbuja de chat (esquina inferior derecha) y haz clic en alguna pregunta predefinida (FAQ) o formula tus propias preguntas como:
    - *¿Qué asegurados tienen mayor frecuencia de reclamos?*
    - *¿Por qué el siniestro SIN-6 fue marcado con alto riesgo?*
-3. **Revisar Siniestros y Documentos**: Navega a la pestaña de "Siniestros" para ver el detalle de póliza, vehículos y documentos de cada caso.
-4. **Ver Cola de Auditoría**: Despliega el panel colapsable flotante de pendientes (esquina inferior izquierda) para inspeccionar facturas sin auditar o inicia auditorías de prueba en la sección "Subir PDF".
-5. **Resumen Ejecutivo por Vehiculo**: En la vista de siniestros usa el boton `Resumen` para ver historial del duenio y del vehiculo.
+3. **Revisar Siniestros por Asegurado**: Navega a la pestaña de "Siniestros" donde los casos se agrupan por asegurado. Cada fila muestra el score de posible fraude (0-100) con semaforo Verde/Amarillo/Rojo.
+4. **Consultar Riesgo con DeepSeek**: Haz clic en el boton `DeepSeek` junto a cualquier siniestro para que el chatbot analice automaticamente por que fue marcado con ese nivel de riesgo.
+5. **Ver Cola de Auditoria**: Despliega el panel colapsable flotante de pendientes (esquina inferior izquierda) para inspeccionar facturas sin auditar.
+6. **Resumen Ejecutivo**: Usa el boton `Resumen` en cada siniestro para ver historial del asegurado y del bien asegurado.
 
 ---
 

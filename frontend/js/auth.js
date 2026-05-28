@@ -29,34 +29,34 @@ export function getPermissions() {
     const role = state.currentRole || "analista";
     const map = {
         demo_jurado: {
-            canRunAuditAll: true, canRunGemini: true,
+            canRunAuditAll: true, canRunAI: true,
             canViewFraud: true, canViewPortfolio: true,
             canViewCustomers: true, canViewAudit: true,
-            canNotify: false, canReviewDecision: false, canManageTariff: false,
+            canReviewDecision: false, canManageTariff: false,
         },
         analista: {
-            canRunAuditAll: false, canRunGemini: false,
+            canRunAuditAll: false, canRunAI: false,
             canViewFraud: false, canViewPortfolio: false,
             canViewCustomers: true, canViewAudit: false,
-            canNotify: true, canReviewDecision: true, canManageTariff: false,
+            canReviewDecision: true, canManageTariff: false,
         },
         antifraude: {
-            canRunAuditAll: true, canRunGemini: true,
+            canRunAuditAll: true, canRunAI: true,
             canViewFraud: true, canViewPortfolio: false,
             canViewCustomers: true, canViewAudit: false,
-            canNotify: true, canReviewDecision: true, canManageTariff: false,
+            canReviewDecision: true, canManageTariff: false,
         },
         jefatura: {
-            canRunAuditAll: true, canRunGemini: true,
+            canRunAuditAll: true, canRunAI: true,
             canViewFraud: true, canViewPortfolio: true,
             canViewCustomers: true, canViewAudit: true,
-            canNotify: false, canReviewDecision: false, canManageTariff: true,
+            canReviewDecision: false, canManageTariff: true,
         },
         auditoria: {
-            canRunAuditAll: true, canRunGemini: true,
+            canRunAuditAll: true, canRunAI: true,
             canViewFraud: true, canViewPortfolio: true,
             canViewCustomers: true, canViewAudit: true,
-            canNotify: false, canReviewDecision: false, canManageTariff: false,
+            canReviewDecision: false, canManageTariff: false,
         },
     };
     return map[role] || map.analista;

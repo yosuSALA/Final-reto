@@ -46,7 +46,7 @@ export function renderStatusBadge(status) {
 
 export function renderEngineBadge(engine) {
     if (!engine) return "";
-    const isAI = engine === "gemini";
+    const isAI = engine !== "rules";
     return `<span class="badge ${isAI ? "badge-info" : "badge-success"}" title="Motor de auditoría" style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.5px;">${isAI ? "IA" : "REGLAS"}</span>`;
 }
 

@@ -1,6 +1,6 @@
 """
 Agente Conversacional IA para Consultas del hackIAthon.
-Clasifica la consulta, extrae datos de la BD y redacta una respuesta formal con Gemini/DeepSeek.
+Clasifica la consulta, extrae datos de la BD y redacta una respuesta formal con DeepSeek.
 """
 import json
 import os
@@ -14,19 +14,19 @@ from backend.models import (
 )
 
 def call_llm(prompt: str, system_prompt: str = "") -> str:
-    """Realiza la llamada al LLM activo (DeepSeek o Gemini) usando APIs de forma robusta."""
-    deepseek_key = os.environ.get("DEEPSEEK_API_KEY")
-    google_key = os.environ.get("GOOGLE_API_KEY")
+    """Realiza la llamada al LLM activo (OpenCode Go > DeepSeek directo)."""
+    api_key = os.environ.get("OPENCODE_GO_API_KEY") or os.environ.get("DEEPSEEK_API_KEY")
+    api_base = os.environ.get("OPENCODE_GO_API_BASE") or os.environ.get("DEEPSEEK_API_BASE") or "https://api.deepseek.com"
+    model = os.environ.get("OPENCODE_GO_MODEL") or os.environ.get("DEEPSEEK_MODEL") or "deepseek-chat"
 
-    if deepseek_key:
-        # Llamar a DeepSeek Chat API
-        url = "https://api.deepseek.com/v1/chat/completions"
+    if api_key:
+        url = f"{api_base.rstrip('/')}/v1/chat/completions"
         headers = {
-            "Authorization": f"Bearer {deepseek_key}",
+            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
         }
         data = {
-            "model": "deepseek-chat",
+            "model": model,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}
@@ -35,45 +35,12 @@ def call_llm(prompt: str, system_prompt: str = "") -> str:
         }
         try:
             req = urllib.request.Request(url, data=json.dumps(data).encode("utf-8"), headers=headers)
-            with urllib.request.urlopen(req, timeout=30) as response:
+            with urllib.request.urlopen(req, timeout=45) as response:
                 res_body = json.loads(response.read().decode("utf-8"))
                 return res_body["choices"][0]["message"]["content"]
         except Exception as e:
-            print(f"Error llamando a DeepSeek API: {str(e)}. Intentando Gemini como fallback...")
+            print(f"Error llamando a LLM API: {str(e)}")
 
-    if google_key:
-        # Llamar a Gemini API
-        try:
-            from google import genai
-            from google.genai import types
-            client = genai.Client(api_key=google_key)
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    system_instruction=system_prompt,
-                    temperature=0.2
-                )
-            )
-            return response.text
-        except Exception as e:
-            # Fallback a REST directo si la librería falla
-            print(f"Librería google-genai falló: {str(e)}. Intentando request REST directo...")
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={google_key}"
-            headers = {"Content-Type": "application/json"}
-            data = {
-                "contents": [{"parts": [{"text": prompt}]}],
-                "systemInstruction": {"parts": [{"text": system_prompt}]},
-                "generationConfig": {"temperature": 0.2}
-            }
-            try:
-                req = urllib.request.Request(url, data=json.dumps(data).encode("utf-8"), headers=headers)
-                with urllib.request.urlopen(req, timeout=30) as response:
-                    res_body = json.loads(response.read().decode("utf-8"))
-                    return res_body["candidates"][0]["content"]["parts"][0]["text"]
-            except Exception as re_err:
-                print(f"Error REST Gemini API: {str(re_err)}")
-                
     return ""
 
 def process_chatbot_query(question: str, db: Session, profile_id: str = None) -> str:

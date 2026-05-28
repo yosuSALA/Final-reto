@@ -42,14 +42,14 @@ export async function runFullAudit() {
         return;
     }
     const btn = document.getElementById("btn-run-audit");
-    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Auditando...'; }
-    const result = await apiPost("/audit-all");
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Auditando con IA...'; }
+    const result = await apiPost("/audit-ai-all");
     if (btn) {
         btn.disabled = false;
-        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Ejecutar Auditoria';
+        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Auditar con IA';
     }
     if (result) {
-        showToast(`Auditoria completada: ${result.audited} facturas procesadas`, "success");
+        showToast(`Auditoría IA completada: ${result.audited} facturas procesadas`, "success");
         loadDashboard();
     }
 }
@@ -82,9 +82,9 @@ function roleHeader(role, title, subtitle) {
     </div>`;
 }
 
-// ── Shared: Gemini panel ───────────────────────────────
+// ── Shared: DeepSeek panel ──────────────────────────────
 
-function geminiPanel(id, type, label, context) {
+function deepseekPanel(id, type, label, context) {
     const encoded = encodeURIComponent(JSON.stringify(context));
     return `
     <div class="intel-ai-panel" id="ai-panel-${id}">
@@ -94,7 +94,7 @@ function geminiPanel(id, type, label, context) {
         </div>
         <div class="intel-ai-body" id="ai-body-${id}">
             <p class="intel-ai-placeholder">Haz clic en el botón para generar un análisis con IA. La plataforma funciona completamente sin IA.</p>
-            <button class="btn btn-ghost btn-sm" onclick="triggerGeminiInsight('${id}','${type}','${encoded}')">
+            <button class="btn btn-ghost btn-sm" onclick="triggerDeepSeekInsight('${id}','${type}','${encoded}')">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/></svg>
                 ${label}
             </button>
@@ -198,7 +198,7 @@ async function renderDemoJurado(page, perms) {
                     ${renderStateDistribution(p.claims_by_state)}
                 </div>
             </div>
-            ${geminiPanel("jurado-portfolio", "executive_briefing", "Generar Briefing Ejecutivo IA", kpiContext)}
+            ${deepseekPanel("jurado-portfolio", "executive_briefing", "Generar Briefing Ejecutivo IA", kpiContext)}
         </div>
     `;
 
@@ -405,7 +405,7 @@ async function renderAntifraude(page, perms) {
                     ${renderFraudNetwork(f.shared_beneficiaries, f.frequent_claimants)}
                 </div>
             </div>
-            ${geminiPanel("fraude-analysis", "explain_anomaly", "Analizar Patrones con IA", fraudContext)}
+            ${deepseekPanel("fraude-analysis", "explain_anomaly", "Analizar Patrones con IA", fraudContext)}
         </div>
     `;
 }
@@ -478,7 +478,7 @@ async function renderJefatura(page, perms) {
                     ${renderMonthlyTrend(p.monthly_trend)}
                 </div>
             </div>
-            ${geminiPanel("jefatura-portfolio", "portfolio_summary", "Resumen Ejecutivo IA", portfolioContext)}
+            ${deepseekPanel("jefatura-portfolio", "portfolio_summary", "Resumen Ejecutivo IA", portfolioContext)}
         </div>
 
         <div class="card" style="margin-top:16px;">
@@ -546,7 +546,7 @@ async function renderAuditoria(page, perms) {
                                 <td><strong>#${a.audit_id}</strong></td>
                                 <td>SIN-${a.claim_id}</td>
                                 <td>
-                                    <span class="badge ${a.engine === 'gemini' ? 'badge-info' : 'badge-warning'}">${a.engine}</span>
+                                    <span class="badge ${a.engine === 'rules' ? 'badge-warning' : 'badge-info'}">${a.engine === 'rules' ? 'rules' : 'deepseek'}</span>
                                 </td>
                                 <td>${renderRiskBadge(a.risk_score)}</td>
                                 <td>${renderStatusBadge(a.status)}</td>
@@ -834,9 +834,9 @@ function renderEngineBreakdown(byEngine) {
         const pct = Math.round(v / Math.max(total, 1) * 100);
         return `
         <div class="intel-engine-row">
-            <span class="badge ${k === 'gemini' ? 'badge-info' : 'badge-warning'}">${k}</span>
+            <span class="badge ${k === 'rules' ? 'badge-warning' : 'badge-info'}">${k === 'rules' ? 'rules' : 'deepseek'}</span>
             <div class="intel-gauge-bar" style="flex:1;margin:0 8px;height:8px;background:var(--bg-glass);border-radius:4px;overflow:hidden;">
-                <div style="width:${pct}%;height:100%;background:${k==='gemini'?'#0ea5e9':'#f59e0b'};border-radius:4px;"></div>
+                <div style="width:${pct}%;height:100%;background:${k==='rules'?'#f59e0b':'#0ea5e9'};border-radius:4px;"></div>
             </div>
             <span>${v} (${pct}%)</span>
         </div>`;
@@ -870,18 +870,18 @@ function renderComplianceMetrics(c) {
     </div>`;
 }
 
-// ── Gemini trigger ─────────────────────────────────────
+// ── DeepSeek trigger ────────────────────────────────────
 
-export async function triggerGeminiInsight(panelId, type, encodedContext) {
+export async function triggerDeepSeekInsight(panelId, type, encodedContext) {
     const bodyEl = document.getElementById(`ai-body-${panelId}`);
     if (!bodyEl) return;
 
     let context = {};
     try { context = JSON.parse(decodeURIComponent(encodedContext)); } catch (e) { /* ignore */ }
 
-    bodyEl.innerHTML = `<div class="intel-ai-loading"><div class="intel-spinner-sm"></div> Generando análisis con Gemini...</div>`;
+    bodyEl.innerHTML = `<div class="intel-ai-loading"><div class="intel-spinner-sm"></div> Generando análisis con DeepSeek...</div>`;
 
-    const result = await apiPost("/intelligence/gemini-insight", {
+    const result = await apiPost("/intelligence/deepseek-insight", {
         type, context, role: state.currentRole || "analista",
     });
 
@@ -894,7 +894,7 @@ export async function triggerGeminiInsight(panelId, type, encodedContext) {
     bodyEl.innerHTML = `
         <div class="${statusClass}">
             <div class="intel-ai-response-header">
-                <span>Análisis Gemini 2.5 Flash</span>
+                <span>Análisis DeepSeek</span>
                 <span class="intel-ai-timestamp">${new Date().toLocaleTimeString("es-EC")}</span>
             </div>
             <div class="intel-ai-response-body">${result.insight.replace(/\n/g, "<br>")}</div>

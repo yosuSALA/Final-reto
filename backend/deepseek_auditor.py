@@ -1,6 +1,6 @@
 """
 ═══════════════════════════════════════════════════════════════════════════════
-  Auditor IA SOTA — Gemini 2.5 Flash
+  Auditor IA SOTA — DeepSeek
   Auditor Agéntico de Facturación de Siniestros / Hackathon 2026
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -8,7 +8,7 @@ Patrones SOTA implementados:
 
   1. CHAIN-OF-THOUGHT FORZADO
      Schemas con orden de campos: razonamiento ANTES de veredicto.
-     Gemini genera fields en orden → calcula primero, decide después.
+     El modelo genera fields en orden → calcula primero, decide después.
 
   2. FEW-SHOT CALIBRADO
      2 ejemplos worked en system prompt: 1 limpio + 1 fraude crítico.
@@ -35,18 +35,19 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
-
-from google import genai
-from google.genai import types
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Configuración del modelo
 # ──────────────────────────────────────────────────────────────────────────────
 
-MODEL = "gemini-2.5-flash"
+MODEL = "deepseek-chat"
+DEFAULT_DEEPSEEK_API_BASE = "https://api.deepseek.com/v1"
 TEMPERATURE_AUDIT = 0.1       # baja para auditoría (determinismo)
 TEMPERATURE_REVIEW = 0.3      # ligeramente más alta para crítica (creatividad)
 MAX_RETRIES = 1               # retry si validación semántica falla
@@ -807,9 +808,9 @@ def validate_audit_response(report: Dict[str, Any]) -> ValidationResult:
 # Auditor agéntico
 # ──────────────────────────────────────────────────────────────────────────────
 
-class GeminiAuditor:
+class DeepSeekAuditor:
     """
-    Auditor IA agéntico con Gemini 2.5 Flash.
+    Auditor IA agéntico con DeepSeek.
 
     Patrones agénticos:
       • Chain-of-thought forzado por orden de campos en schema.
@@ -819,34 +820,66 @@ class GeminiAuditor:
     """
 
     def __init__(self, model: str = MODEL):
-        api_key = os.environ.get("GOOGLE_API_KEY")
-        self.mock_mode = not api_key
-        if not self.mock_mode:
-            self.client = genai.Client(api_key=api_key)
-        else:
-            self.client = None
-        self.model = model
+        self.api_key = os.environ.get("OPENCODE_GO_API_KEY") or os.environ.get("DEEPSEEK_API_KEY")
+        self.api_base = os.environ.get("OPENCODE_GO_API_BASE") or os.environ.get("DEEPSEEK_API_BASE") or DEFAULT_DEEPSEEK_API_BASE
+        if "tu-gateway-opencode-go" in self.api_base:
+            self.api_base = DEFAULT_DEEPSEEK_API_BASE
+        self.model = os.environ.get("OPENCODE_GO_MODEL") or model
+        self.mock_mode = not self.api_key
 
     # ── Llamada base ──────────────────────────────────────────────────────────
 
-    def _call_gemini(
+    def _call_deepseek(
         self,
         prompt: str,
         schema: dict,
         system_instruction: str = SYSTEM_PROMPT,
         temperature: float = TEMPERATURE_AUDIT,
     ) -> Dict[str, Any]:
-        response = self.client.models.generate_content(
-            model=self.model,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=system_instruction,
-                response_mime_type="application/json",
-                response_schema=schema,
-                temperature=temperature,
-            ),
+        schema_hint = json.dumps(schema, ensure_ascii=False)
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system_instruction},
+                {
+                    "role": "user",
+                    "content": (
+                        "Responde SOLO JSON valido. Sin markdown. "
+                        "Cumple este esquema:\n"
+                        f"{schema_hint}\n\n"
+                        f"{prompt}"
+                    ),
+                },
+            ],
+            "temperature": temperature,
+            "response_format": {"type": "json_object"},
+        }
+        url = f"{self.api_base.rstrip('/')}/chat/completions"
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+                "User-Agent": "AseguradoraDelSur/1.0",
+            },
         )
-        return json.loads(response.text)
+        try:
+            with urllib.request.urlopen(req, timeout=90) as response:
+                body = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode("utf-8", errors="replace")
+            if e.code == 401:
+                raise ValueError("La API key fue rechazada (401). Verifica OPENCODE_GO_API_KEY y que OPENCODE_GO_API_BASE sea el gateway real, no el placeholder.")
+            raise ValueError(f"API HTTP {e.code}: {detail}")
+        text = body["choices"][0]["message"]["content"]
+        try:
+            return json.loads(text)
+        except Exception:
+            match = re.search(r"\{[\s\S]*\}", text)
+            if not match:
+                raise ValueError("DeepSeek no devolvio JSON valido")
+            return json.loads(match.group(0))
 
     # ── Audit individual con retry ────────────────────────────────────────────
 
@@ -878,7 +911,7 @@ class GeminiAuditor:
         )
 
         # Stage 1 — audit inicial
-        report = self._call_gemini(prompt, AUDIT_SCHEMA)
+        report = self._call_deepseek(prompt, AUDIT_SCHEMA)
 
         # Stage 1.5 — filtrado defensivo de falsos positivos OVERCHARGE
         report = _filter_false_positive_overcharge(report, invoice, tariff_items)
@@ -897,7 +930,7 @@ class GeminiAuditor:
                 + "\n\nInput original:\n"
                 + payload
             )
-            report = self._call_gemini(feedback, AUDIT_SCHEMA, temperature=0.05)
+            report = self._call_deepseek(feedback, AUDIT_SCHEMA, temperature=0.05)
             validation = validate_audit_response(report)
 
         # Stage 3 — self-reflection (opcional)
@@ -926,7 +959,7 @@ class GeminiAuditor:
             + original_payload
         )
 
-        review = self._call_gemini(
+        review = self._call_deepseek(
             review_prompt, SELF_REVIEW_SCHEMA, temperature=TEMPERATURE_REVIEW
         )
 
@@ -1010,7 +1043,7 @@ class GeminiAuditor:
             f"DATOS:\n{payload}"
         )
 
-        report = self._call_gemini(prompt, BATCH_SCHEMA)
+        report = self._call_deepseek(prompt, BATCH_SCHEMA)
         return self._normalize_batch(report)
 
     # ── Helpers ───────────────────────────────────────────────────────────────
@@ -1150,15 +1183,15 @@ class GeminiAuditor:
                 {
                     "finding_type": "overcharge",
                     "severity": "warning",
-                    "title": "[PRUEBA SIN API DE GOOGLE] Falta GOOGLE_API_KEY",
-                    "description": "Debe agregar una API Key de Google para realizar la auditoría real.",
+                    "title": "[MODO DEMO IA] Auditoria simulada",
+                    "description": "La auditoria IA se esta ejecutando en modo de demostracion con respuesta simulada.",
                     "item_description": "Item de prueba (mock)",
                     "expected_value": "0.0",
                     "actual_value": "100.0",
                     "difference": 100.0,
-                    "recommendation": "Agregar GOOGLE_API_KEY en las variables de entorno (.env)",
+                    "recommendation": "Configurar una API key valida del proveedor IA en variables de entorno.",
                     "regla": "Prueba de Integración",
-                    "detalle": "Prueba sin API de Google agregada. Esta es una respuesta automática.",
+                    "detalle": "Respuesta simulada para pruebas de integracion del flujo IA.",
                     "impacto_economico": 100.0,
                     "evidence": "N/A",
                     "analysis": "Ejecución en mock mode",
@@ -1173,17 +1206,17 @@ class GeminiAuditor:
             "total_auditado": max(0, float(invoice.get("total", 0) if isinstance(invoice, dict) else 0) - 100),
             "pct_discrepancia": 10.0,
             "ahorro_estimado": 100.0,
-            "notas_agente": "[MOCK MODE] Prueba sin API de Google agregada para que el revisor vea que son funciones donde debe agregar la GOOGLE_API_KEY.",
-            "resumen_ejecutivo_taller": "Esta es una notificación generada en modo de prueba por falta de API Key de Google.",
+            "notas_agente": "[MOCK MODE] Respuesta de demostracion generada por el modulo IA.",
+            "resumen_ejecutivo_taller": "Notificacion generada en modo de demostracion del agente IA.",
             "model_used": "mock-test-model",
-            "cadena_de_razonamiento": "Falta API Key, se activa modo mock",
+            "cadena_de_razonamiento": "Modo demo activo en el modulo IA",
             "pasos_validacion": [],
             "self_review_metadata": {}
         }
 
     def _get_mock_batch_audit_response(self, invoices: List[Dict[str, Any]]) -> Dict[str, Any]:
         return {
-            "analisis_global_inicial": "Modo de prueba sin API de Google activado.",
+            "analisis_global_inicial": "Modo de demostracion IA activado.",
             "patrones_cruzados_detectados": [],
             "auditorias": [
                 {
@@ -1196,15 +1229,15 @@ class GeminiAuditor:
                         {
                             "finding_type": "overcharge",
                             "severity": "warning",
-                            "title": "[PRUEBA SIN API DE GOOGLE]",
-                            "description": "Debe agregar una API Key de Google.",
+                            "title": "[MODO DEMO IA] Auditoria simulada",
+                            "description": "Respuesta simulada del agente IA para pruebas.",
                             "item_description": "Item de prueba (mock)",
                             "expected_value": "0.0",
                             "actual_value": "100.0",
                             "difference": 100.0,
-                            "recommendation": "Agregar GOOGLE_API_KEY",
+                            "recommendation": "Configurar API key valida del proveedor IA.",
                             "regla": "Prueba de Integración",
-                            "detalle": "Prueba sin API de Google agregada.",
+                            "detalle": "Respuesta simulada para validar el flujo IA.",
                             "impacto_economico": 100.0,
                             "evidence": "N/A",
                             "analysis": "Ejecución en mock mode",
@@ -1220,7 +1253,7 @@ class GeminiAuditor:
                     "pct_discrepancia": 10.0,
                     "notas_agente": "[MOCK MODE] Prueba sin API.",
                     "patrones_cruzados": "",
-                    "cadena_de_razonamiento": "Falta API Key",
+                    "cadena_de_razonamiento": "Modo demo IA",
                     "model_used": "mock-test-model",
                 } for inv in invoices
             ],
@@ -1233,7 +1266,7 @@ class GeminiAuditor:
                 "facturas_aprobadas": 0,
                 "patrones_fraude_detectados": [],
                 "talleres_alto_riesgo": [],
-                "recomendacion_global": "Agregar GOOGLE_API_KEY para auditoría real."
+                "recomendacion_global": "Configurar API key valida del proveedor IA para auditoria real."
             },
             "model_used": "mock-test-model"
         }
