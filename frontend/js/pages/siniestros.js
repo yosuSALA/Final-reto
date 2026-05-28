@@ -9,12 +9,36 @@ export async function loadSiniestros() {
 
 export function renderSiniestrosView() {
     const page = document.getElementById("page-siniestros");
+    const claims = getVisibleClaims();
+    const types = [...new Set(state.claimsData.map(c => c.claim_type).filter(Boolean))];
+    const statuses = [...new Set(state.claimsData.map(c => c.audit_status).filter(Boolean))];
     page.innerHTML = `
         <div class="page-header">
             <h1>Siniestros</h1>
             <p>Siniestros reportados y su estado. Expanda cada fila para ver facturas y configurar destinatarios de notificación.</p>
         </div>
         <div class="card">
+            <div class="card-header siniestros-toolbar">
+                <input class="filter-input" type="search" value="${state.claimsSearchTerm || ""}" placeholder="Buscar numero, placa, asegurado..." oninput="setClaimsSearch(this.value)">
+                <select class="filter-select" onchange="setClaimsTypeFilter(this.value)">
+                    <option value="all">Todos los tipos</option>
+                    ${types.map(t => `<option value="${t}" ${state.claimsTypeFilter === t ? "selected" : ""}>${t.replace(/_/g, " ")}</option>`).join("")}
+                </select>
+                <select class="filter-select" onchange="setClaimsStatusFilter(this.value)">
+                    <option value="all">Todos los estados</option>
+                    ${statuses.map(s => `<option value="${s}" ${state.claimsStatusFilter === s ? "selected" : ""}>${s.replace(/_/g, " ")}</option>`).join("")}
+                </select>
+                <select class="filter-select" onchange="setClaimsSort(this.value)">
+                    ${[
+                        ["incident_date:desc", "Fecha reciente"],
+                        ["incident_date:asc", "Fecha antigua"],
+                        ["claim_number:asc", "Numero A-Z"],
+                        ["claim_type:asc", "Tipo A-Z"],
+                        ["risk_score:desc", "Mayor riesgo"],
+                        ["invoice_count:desc", "Mas facturas"],
+                    ].map(([value, label]) => `<option value="${value}" ${`${state.claimsSortBy}:${state.claimsSortDir}` === value ? "selected" : ""}>${label}</option>`).join("")}
+                </select>
+            </div>
             <div class="card-body table-wrap">
                 <table>
                     <thead><tr>
@@ -24,7 +48,7 @@ export function renderSiniestrosView() {
                         <th>Estado Auditoria</th><th>Riesgo</th><th></th>
                     </tr></thead>
                     <tbody>
-                        ${state.claimsData.map(c => renderClaimRow(c)).join("")}
+                        ${claims.map(c => renderClaimRow(c)).join("") || '<tr><td colspan="11" class="empty-cell">No hay siniestros para este filtro.</td></tr>'}
                     </tbody>
                 </table>
             </div>
@@ -32,7 +56,7 @@ export function renderSiniestrosView() {
 
         <!-- Modal destinatarios -->
         <div id="notify-modal" style="display:none; position:fixed; inset:0; z-index:500; background:rgba(0,0,0,0.4); backdrop-filter:blur(4px); display:none; align-items:center; justify-content:center;">
-            <div style="background:var(--bg-secondary); border:1px solid var(--border-primary); border-radius:16px; padding:28px; width:100%; max-width:480px; box-shadow:var(--shadow-lg);">
+            <div class="siniestro-modal siniestro-modal-sm" style="background:var(--bg-secondary); border:1px solid var(--border-primary); border-radius:16px; padding:22px; width:100%; max-width:420px; box-shadow:var(--shadow-lg);">
                 <h3 style="margin-bottom:6px; color:var(--text-primary);">📧 Configurar Destinatarios</h3>
                 <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:16px;">Los emails aquí configurados recibirán la notificación PDF al ejecutar "Notificar Taller".</p>
 
@@ -59,7 +83,7 @@ export function renderSiniestrosView() {
         </div>
 
         <div id="summary-modal" style="display:none; position:fixed; inset:0; z-index:520; background:rgba(0,0,0,0.45); backdrop-filter:blur(4px); align-items:center; justify-content:center;">
-            <div style="background:var(--bg-secondary); border:1px solid var(--border-primary); border-radius:16px; padding:22px; width:100%; max-width:920px; max-height:88vh; overflow:auto; box-shadow:var(--shadow-lg);">
+            <div class="siniestro-modal" style="background:var(--bg-secondary); border:1px solid var(--border-primary); border-radius:16px; padding:18px; width:100%; max-width:780px; max-height:76vh; overflow:auto; box-shadow:var(--shadow-lg);">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
                     <h3 style="margin:0;">Resumen Ejecutivo del Vehículo y Asegurado</h3>
                     <button class="btn btn-ghost btn-sm" onclick="closeSummaryModal()">Cerrar</button>
@@ -68,6 +92,58 @@ export function renderSiniestrosView() {
             </div>
         </div>
     `;
+}
+
+function getVisibleClaims() {
+    const q = (state.claimsSearchTerm || "").toLowerCase().trim();
+    const filtered = state.claimsData.filter(c => {
+        const matchesSearch = !q || [
+            c.claim_number, c.claim_type, c.vehicle, c.vehicle_plate,
+            c.insured_name, c.policy_number,
+        ].some(v => String(v || "").toLowerCase().includes(q));
+        const matchesType = state.claimsTypeFilter === "all" || c.claim_type === state.claimsTypeFilter;
+        const matchesStatus = state.claimsStatusFilter === "all" || c.audit_status === state.claimsStatusFilter;
+        return matchesSearch && matchesType && matchesStatus;
+    });
+
+    const dir = state.claimsSortDir === "asc" ? 1 : -1;
+    return filtered.sort((a, b) => {
+        const key = state.claimsSortBy || "incident_date";
+        let av = a[key];
+        let bv = b[key];
+        if (key === "incident_date") {
+            av = av ? Date.parse(av) : 0;
+            bv = bv ? Date.parse(bv) : 0;
+        } else if (typeof av === "string" || typeof bv === "string") {
+            return String(av || "").localeCompare(String(bv || ""), "es") * dir;
+        } else {
+            av = Number(av ?? -1);
+            bv = Number(bv ?? -1);
+        }
+        return (av === bv ? 0 : av > bv ? 1 : -1) * dir;
+    });
+}
+
+export function setClaimsSearch(value) {
+    state.claimsSearchTerm = value || "";
+    renderSiniestrosView();
+}
+
+export function setClaimsTypeFilter(value) {
+    state.claimsTypeFilter = value || "all";
+    renderSiniestrosView();
+}
+
+export function setClaimsStatusFilter(value) {
+    state.claimsStatusFilter = value || "all";
+    renderSiniestrosView();
+}
+
+export function setClaimsSort(value) {
+    const [sortBy, sortDir] = (value || "incident_date:desc").split(":");
+    state.claimsSortBy = sortBy;
+    state.claimsSortDir = sortDir || "desc";
+    renderSiniestrosView();
 }
 
 function renderClaimRow(c) {

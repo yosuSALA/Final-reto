@@ -76,8 +76,14 @@ def call_llm(prompt: str, system_prompt: str = "") -> str:
                 
     return ""
 
-def process_chatbot_query(question: str, db: Session) -> str:
+def process_chatbot_query(question: str, db: Session, profile_id: str = None) -> str:
     """Clasifica la pregunta del usuario, obtiene datos de la BD y genera la respuesta formateada."""
+    def _q(model):
+        q = db.query(model)
+        if profile_id and hasattr(model, "profile_id"):
+            q = q.filter(model.profile_id == profile_id)
+        return q
+
     q_clean = question.lower().strip()
     raw_data = ""
     question_type = "GENERAL"
@@ -86,7 +92,7 @@ def process_chatbot_query(question: str, db: Session) -> str:
     # Q1: Top 10 siniestros
     if any(k in q_clean for k in ["top 10", "10 siniestros", "mayor riesgo", "más riesgosos", "mayor score", "ranking"]):
         question_type = "Q1"
-        claims = db.query(Siniestro).order_by(Siniestro.fraud_score.desc()).limit(10).all()
+        claims = _q(Siniestro).order_by(Siniestro.fraud_score.desc()).limit(10).all()
         res = []
         for c in claims:
             res.append(f"- SIN-{c.id_siniestro}: Asegurado: {c.id_asegurado}, Ramo: {c.ramo.value}, Score: {c.fraud_score}, Clasificación: {c.fraud_classification}")

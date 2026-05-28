@@ -11,10 +11,13 @@ from backend.models import (
     Workshop, Invoice, InvoiceItem, Ramo, Cobertura, EstadoSiniestro
 )
 from backend.fraud_scoring import update_siniestro_fraud_data
+from backend.database import DEFAULT_PROFILE_ID
+
+PID = DEFAULT_PROFILE_ID
 
 def seed_fraud_data(db: Session):
     # Evitar doble ejecución
-    if db.query(AseguradoSintetico).count() > 0:
+    if db.query(AseguradoSintetico).filter(AseguradoSintetico.profile_id == PID).count() > 0:
         print("Datos sintéticos ya existen en la base de datos.")
         return
 
@@ -47,6 +50,7 @@ def seed_fraud_data(db: Session):
     for data in asegurados_data:
         aseg = AseguradoSintetico(
             id_asegurado=data["id"],
+            profile_id=PID,
             nombre=data["nombre"],
             segmento=data["segmento"],
             antiguedad=data["antiguedad"],
@@ -92,6 +96,7 @@ def seed_fraud_data(db: Session):
     for p_data in polizas_data:
         pol = Poliza(
             id_poliza=p_data["id"],
+            profile_id=PID,
             id_asegurado=p_data["aseg"],
             ramo=p_data["ramo"],
             fecha_inicio=p_data["inicio"],
@@ -273,6 +278,7 @@ def seed_fraud_data(db: Session):
             doc_completos = 1
 
         claim = Siniestro(
+            profile_id=PID,
             id_poliza=pol.id_poliza,
             id_asegurado=pol.id_asegurado,
             ramo=pol.ramo,

@@ -4,6 +4,7 @@ Configuración de la base de datos SQLite con SQLAlchemy.
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 import os
+
 DB_PATH = os.environ.get(
     "DATABASE_PATH",
     os.path.join(os.path.dirname(__file__), "auditor.db"),
@@ -12,11 +13,11 @@ SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH}"
 
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False}
+    connect_args={"check_same_thread": False},
 )
 
-# Enable foreign key enforcement for SQLite
 from sqlalchemy import event
+
 
 @event.listens_for(engine, "connect")
 def _set_sqlite_pragma(dbapi_connection, connection_record):
@@ -24,13 +25,13 @@ def _set_sqlite_pragma(dbapi_connection, connection_record):
     cursor.execute("PRAGMA foreign_keys=ON")
     cursor.close()
 
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
 
 
 def get_db():
-    """Dependency para obtener sesión de BD en endpoints."""
     db = SessionLocal()
     try:
         yield db
@@ -38,32 +39,112 @@ def get_db():
         db.close()
 
 
+# ── ID del perfil por defecto (datos pre-existentes) ───────────────────────────
+DEFAULT_PROFILE_ID = "00000000-0000-0000-0000-000000000001"
+
+
 def init_db():
-    """Crear todas las tablas en la BD + migración liviana de columnas nuevas."""
+    """Crear todas las tablas + migración liviana de columnas nuevas."""
     from backend.models import (
-        Siniestro, Workshop, Invoice, InvoiceItem,
+        Profile, Siniestro, Workshop, Invoice, InvoiceItem,
         TariffItem, AuditResult, AuditFinding,
-        Poliza, AseguradoSintetico, Vehiculo, Documento
+        Poliza, AseguradoSintetico, Vehiculo, Documento,
     )
     Base.metadata.create_all(bind=engine)
     _migrate_columns()
+    _ensure_default_profile()
 
 
 def _migrate_columns():
     """SQLite: añade columnas nuevas si faltan en tablas existentes."""
     from sqlalchemy import text
+
     migrations = [
+        # columnas legadas
         ("invoices", "siniestro_id", "INTEGER"),
         ("invoices", "is_test", "INTEGER DEFAULT 0"),
         ("audit_results", "is_test", "INTEGER DEFAULT 0"),
         ("audit_results", "audit_engine", "VARCHAR(20) DEFAULT 'rules'"),
+        # columnas de aislamiento por perfil
+        ("profiles", "token_secret", "VARCHAR(64)"),
+        ("profiles", "role", "VARCHAR(50) DEFAULT 'analista'"),
+        ("workshops", "profile_id", f"VARCHAR(36) REFERENCES profiles(id)"),
+        ("asegurados_sinteticos", "profile_id", f"VARCHAR(36) REFERENCES profiles(id)"),
+        ("polizas", "profile_id", f"VARCHAR(36) REFERENCES profiles(id)"),
+        ("siniestros", "profile_id", f"VARCHAR(36) REFERENCES profiles(id)"),
+        ("invoices", "profile_id", f"VARCHAR(36) REFERENCES profiles(id)"),
+        ("tariff_items", "profile_id", f"VARCHAR(36) REFERENCES profiles(id)"),
+        ("audit_results", "profile_id", f"VARCHAR(36) REFERENCES profiles(id)"),
     ]
+
     with engine.begin() as conn:
         for table, col, decl in migrations:
-            cols = conn.execute(text(f"PRAGMA table_info({table})")).fetchall()
+            try:
+                cols = conn.execute(text(f"PRAGMA table_info({table})")).fetchall()
+            except Exception:
+                continue
             existing = {c[1] for c in cols}
             if col not in existing:
                 try:
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {decl}"))
                 except Exception:
                     pass
+
+
+def _ensure_default_profile():
+    """
+    Crea el perfil por defecto si no existe y asigna todos los datos
+    huérfanos (sin profile_id) a ese perfil.
+    """
+    from sqlalchemy import text
+    from backend.auth import new_token_secret, generate_profile_token
+
+    db = SessionLocal()
+    try:
+        from backend.models import Profile
+
+        existing = db.query(Profile).filter(Profile.id == DEFAULT_PROFILE_ID).first()
+        if existing and (not existing.role or existing.role == "analista"):
+            try:
+                db.execute(text("UPDATE profiles SET role = 'demo_jurado' WHERE id = :pid"), {"pid": DEFAULT_PROFILE_ID})
+                db.commit()
+            except Exception:
+                pass
+        if not existing:
+            secret = new_token_secret()
+            default_profile = Profile(
+                id=DEFAULT_PROFILE_ID,
+                name="demo_jurado",
+                display_name="Demo Principal",
+                role="demo_jurado",
+                token_secret=secret,
+                is_active=1,
+            )
+            db.add(default_profile)
+            db.commit()
+
+        pid = DEFAULT_PROFILE_ID
+
+        # Asigna datos pre-existentes al perfil por defecto
+        for table in (
+            "workshops",
+            "asegurados_sinteticos",
+            "polizas",
+            "siniestros",
+            "invoices",
+            "tariff_items",
+            "audit_results",
+        ):
+            try:
+                db.execute(
+                    text(
+                        f"UPDATE {table} SET profile_id = :pid "
+                        f"WHERE profile_id IS NULL"
+                    ),
+                    {"pid": pid},
+                )
+            except Exception:
+                pass
+        db.commit()
+    finally:
+        db.close()

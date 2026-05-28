@@ -1,6 +1,7 @@
 import { apiFetch, apiPost, apiPut, apiDelete, API } from "../api.js";
 import { state } from "../state.js";
 import { showToast } from "../utils.js";
+import { showCsvSchemaModal } from "../components/csvUpload.js";
 
 const CLAIM_TYPES = [
     "choque_frontal", "choque_lateral", "choque_trasero",
@@ -10,6 +11,8 @@ const CLAIM_TYPES = [
 
 const CATEGORIES = ["repuesto", "pintura", "material", "mano_obra", "servicio"];
 
+export { showCsvSchemaModal };
+
 export async function loadTarifario() {
     state.tariffData = await apiFetch("/tariffs") || [];
     const categories = [...new Set(state.tariffData.map(t => t.category))];
@@ -17,7 +20,15 @@ export async function loadTarifario() {
         categories.forEach((c, i) => { state.tarifExpanded[c] = i === 0; });
     }
     renderTarifarioView();
+    window._tarifarioLoaded = true;
 }
+
+// Recarga el tarifario cuando se completa una importación CSV exitosa
+window.addEventListener("csv:imported", async (e) => {
+    if (e.detail?.entity === "tarifario" && window._tarifarioLoaded) {
+        await loadTarifario();
+    }
+});
 
 export function renderTarifarioView() {
     const page = document.getElementById("page-tarifario");
@@ -28,9 +39,14 @@ export function renderTarifarioView() {
                 <h1>Tarifario Acordado</h1>
                 <p>Precios maximos acordados entre la aseguradora y los talleres.</p>
             </div>
-            <button class="btn btn-primary" onclick="toggleTariffForm()">
-                ${state.showTariffForm ? "✕ Cerrar formulario" : "+ Añadir Tarifario Manual"}
-            </button>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button class="btn btn-ghost" onclick="showCsvSchemaModal('tarifario')" title="Importar múltiples items desde archivo CSV">
+                    ⬆ Importar CSV
+                </button>
+                <button class="btn btn-primary" onclick="toggleTariffForm()">
+                    ${state.showTariffForm ? "✕ Cerrar formulario" : "+ Añadir Manual"}
+                </button>
+            </div>
         </div>
         ${state.showTariffForm ? renderTariffForm() : ""}
         <div style="display:flex; gap:8px; margin-bottom:16px;">
@@ -85,7 +101,7 @@ function renderTariffForm() {
                     <label style="display:block;margin-bottom:6px;font-weight:500;">Aplicable a siniestros:</label>
                     <div style="display:flex;flex-wrap:wrap;gap:8px;">
                         ${CLAIM_TYPES.map(ct => `
-                            <label style="display:flex;align-items:center;gap:4px;font-size:0.85rem;background:#f8fafc;padding:4px 8px;border-radius:4px;cursor:pointer;">
+                            <label class="tariff-claim-option" style="display:flex;align-items:center;gap:4px;font-size:0.85rem;background:var(--bg-tertiary);color:var(--text-primary);padding:4px 8px;border-radius:4px;cursor:pointer;">
                                 <input type="checkbox" class="tf-claim" value="${ct}"> ${ct.replace(/_/g, ' ')}
                             </label>
                         `).join("")}

@@ -14,23 +14,31 @@ from backend.rules_engine import RulesEngine, Finding
 
 
 class AuditAgent:
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, profile_id: str = None):
         self.db = db
+        self.profile_id = profile_id
         self.engine = RulesEngine()
 
+    def _q(self, model):
+        """Query filtrada por profile_id cuando está disponible."""
+        q = self.db.query(model)
+        if self.profile_id and hasattr(model, "profile_id"):
+            q = q.filter(model.profile_id == self.profile_id)
+        return q
+
     def audit_invoice(self, invoice_id: int) -> Dict[str, Any]:
-        invoice = self.db.query(Invoice).filter(Invoice.id == invoice_id).first()
+        invoice = self._q(Invoice).filter(Invoice.id == invoice_id).first()
         if not invoice:
             return {"error": f"Factura {invoice_id} no encontrada"}
-        claim = self.db.query(Siniestro).filter(Siniestro.id_siniestro == invoice.siniestro_id).first()
+        claim = self._q(Siniestro).filter(Siniestro.id_siniestro == invoice.siniestro_id).first()
         if not claim:
             return {"error": f"Siniestro no encontrado para factura {invoice_id}"}
         items = self.db.query(InvoiceItem).filter(InvoiceItem.invoice_id == invoice_id).all()
-        tariff_items = self.db.query(TariffItem).all()
+        tariff_items = self._q(TariffItem).all()
         tariff_map = {t.code: {"code": t.code, "description": t.description, "category": t.category, "max_price": t.max_price, "tolerance_pct": t.tolerance_pct, "expected_qty_min": t.expected_qty_min, "expected_qty_max": t.expected_qty_max, "applicable_claim_types": t.applicable_claim_types or "[]"} for t in tariff_items}
 
-        # Tarea 3: construir historial de facturas para detección de re-facturación
-        all_invoices = self.db.query(Invoice).all()
+        # Historial filtrado al perfil para detección de re-facturación
+        all_invoices = self._q(Invoice).all()
         invoice_history = [
             {
                 "id": inv.id,
@@ -96,7 +104,7 @@ class AuditAgent:
         else:
             status = AuditStatus.APPROVED
         is_test = getattr(invoice, "is_test", 0) or 0
-        existing = self.db.query(AuditResult).filter(AuditResult.invoice_id == invoice.id).first()
+        existing = self._q(AuditResult).filter(AuditResult.invoice_id == invoice.id).first()
         if existing:
             existing.status = status
             existing.risk_score = risk_score
@@ -109,6 +117,7 @@ class AuditAgent:
             audit_result = existing
         else:
             audit_result = AuditResult(
+                profile_id=self.profile_id,
                 siniestro_id=claim.id_siniestro, invoice_id=invoice.id, status=status,
                 risk_score=risk_score, total_overcharge=total_overcharge, summary=summary,
                 audit_engine="rules", is_test=is_test, audited_at=datetime.utcnow(),
@@ -122,10 +131,10 @@ class AuditAgent:
         return audit_result
 
     def audit_all_pending(self):
-        invoices = self.db.query(Invoice).all()
+        invoices = self._q(Invoice).all()
         results = []
         for inv in invoices:
-            existing = self.db.query(AuditResult).filter(AuditResult.invoice_id == inv.id).first()
+            existing = self._q(AuditResult).filter(AuditResult.invoice_id == inv.id).first()
             if not existing:
                 results.append(self.audit_invoice(inv.id))
         return results

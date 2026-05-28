@@ -1,6 +1,6 @@
 import { apiFetch } from "../api.js";
 
-let isCollapsed = true;
+let isCollapsed = localStorage.getItem("auditQueueCollapsed") === "1";
 
 function getWidget() {
     return document.getElementById("audit-queue-widget");
@@ -29,6 +29,13 @@ function renderQueue(pending) {
     if (!widget) return;
 
     const count = pending.length;
+    widget.hidden = count === 0;
+    if (count === 0) {
+        widget.innerHTML = "";
+        setTopRunButtonState(0);
+        return;
+    }
+
     const preview = pending.slice(0, 3).map((inv) => `
         <div class="queue-item">
             <strong>${inv.invoice_number}</strong>
@@ -37,27 +44,32 @@ function renderQueue(pending) {
     `).join("");
 
     widget.classList.toggle("has-pending", count > 0);
+    widget.classList.toggle("is-collapsed", isCollapsed);
 
     widget.innerHTML = `
         <div class="queue-header">
             <span>Cola de facturas</span>
-            <span class="queue-count">${count}</span>
+            <div class="queue-header-actions">
+                <span class="queue-count">${count}</span>
+                <button class="queue-minimize" onclick="toggleAuditQueueMinimized()" title="${isCollapsed ? "Mostrar cola" : "Minimizar cola"}">${isCollapsed ? "+" : "−"}</button>
+            </div>
         </div>
-        <div class="queue-list">
-            ${count ? preview : '<div class="queue-empty">Sin pendientes</div>'}
-        </div>
-        <div class="queue-actions">
-            <button class="btn btn-ghost btn-sm" onclick="navigateTo('auditorias')">Ver cola</button>
-            <button class="btn btn-primary btn-sm" id="queue-run-btn" ${count === 0 ? "disabled" : ""} onclick="runFullAudit()">Ejecutar auditoria</button>
-        </div>
+        ${isCollapsed ? "" : `
+            <div class="queue-list">${preview}</div>
+            <div class="queue-actions">
+                <button class="btn btn-ghost btn-sm" onclick="navigateTo('auditorias')">Ver cola</button>
+                <button class="btn btn-primary btn-sm" id="queue-run-btn" onclick="runFullAudit()">Ejecutar auditoria</button>
+            </div>
+        `}
     `;
 
     setTopRunButtonState(count);
 }
-        });
-    }
 
-    setTopRunButtonState(count);
+export function toggleAuditQueueMinimized() {
+    isCollapsed = !isCollapsed;
+    localStorage.setItem("auditQueueCollapsed", isCollapsed ? "1" : "0");
+    refreshAuditQueue();
 }
 
 export async function refreshAuditQueue() {

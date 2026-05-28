@@ -2,19 +2,26 @@
 import { navigateTo, routeFromHash } from "./router.js";
 import { showToast } from "./utils.js";
 import {
-    loadDashboard, runFullAudit, toggleIncludeTest,
+    loadDashboard, runFullAudit, toggleIncludeTest, triggerGeminiInsight,
 } from "./pages/dashboard.js";
+import { loadClaimWorkspace, switchWorkspaceTab } from "./pages/claimWorkspace.js";
 import {
     loadAuditorias, setAuditSearch, setAuditTab, toggleAuditIncludeTest,
 } from "./pages/auditorias.js";
 import {
     loadTarifario, toggleTariffForm, submitNewTariff, deleteTariff,
     toggleTarifCat, toggleAllTarif, editTariff, cancelTariff, saveTariff,
+    showCsvSchemaModal,
 } from "./pages/tarifario.js";
+import {
+    closeCsvModal, triggerCsvFilePicker, handleCsvFileChange,
+    submitCsvUpload, downloadCsvTemplate,
+} from "./components/csvUpload.js";
 import {
     loadSiniestros, toggleClaimPreview,
     openNotifyModal, closeNotifyModal, saveNotifyConfig,
     openSummaryModal, closeSummaryModal,
+    setClaimsSearch, setClaimsTypeFilter, setClaimsStatusFilter, setClaimsSort,
 } from "./pages/siniestros.js";
 import {
     loadUploadPage, genRandomFactura, clearGeneratedFacturas,
@@ -26,12 +33,15 @@ import {
 import {
     loadAuditDetail, auditAction, previewReport, notifyWorkshop, reAuditWith,
 } from "./pages/auditDetail.js";
-import { refreshAuditQueue } from "./components/auditQueue.js";
+import { refreshAuditQueue, toggleAuditQueueMinimized } from "./components/auditQueue.js";
 import { initChatbotBubble } from "./components/chatbotBubble.js";
-import { applyProfileUI, setProfile } from "./auth.js";
+import {
+    applyProfileUI, showProfileSelector, hasActiveSession, clearProfileSession, updateProfileBadge, signOut,
+} from "./auth.js";
 import { state } from "./state.js";
 
-// Lógica del modo oscuro
+// ── Modo oscuro ────────────────────────────────────────
+
 export function toggleTheme() {
     const isDark = document.documentElement.getAttribute("data-theme") === "dark";
     const newTheme = isDark ? "light" : "dark";
@@ -41,36 +51,41 @@ export function toggleTheme() {
     document.getElementById("icon-sun").style.display = isDark ? "none" : "block";
 }
 
-// Inicializar tema
 const savedTheme = localStorage.getItem("theme") || "dark";
 document.documentElement.setAttribute("data-theme", savedTheme);
 if (savedTheme === "dark") {
     setTimeout(() => {
         const m = document.getElementById("icon-moon");
         const s = document.getElementById("icon-sun");
-        if(m) m.style.display = "none";
-        if(s) s.style.display = "block";
+        if (m) m.style.display = "none";
+        if (s) s.style.display = "block";
     }, 50);
 }
 
-// Expose to window for inline `onclick="fn(...)"` attributes in rendered HTML
+// ── Exponer funciones a atributos onclick en HTML ──────
+
 Object.assign(window, {
     navigateTo, showToast,
-    runFullAudit, toggleIncludeTest,
+    runFullAudit, toggleIncludeTest, triggerGeminiInsight,
+    loadClaimWorkspace, switchWorkspaceTab,
     setAuditSearch, setAuditTab, toggleAuditIncludeTest,
     toggleTariffForm, submitNewTariff, deleteTariff,
     toggleTarifCat, toggleAllTarif, editTariff, cancelTariff, saveTariff,
+    showCsvSchemaModal, closeCsvModal, triggerCsvFilePicker,
+    handleCsvFileChange, submitCsvUpload, downloadCsvTemplate,
     toggleClaimPreview,
     openNotifyModal, closeNotifyModal, saveNotifyConfig,
     openSummaryModal, closeSummaryModal,
+    setClaimsSearch, setClaimsTypeFilter, setClaimsStatusFilter, setClaimsSort,
     genRandomFactura, clearGeneratedFacturas, setUploadIsTest,
     handleUploadFile, auditTestPdfDirect,
     triggerJitAudit, triggerRulesAudit,
     auditAction, previewReport, notifyWorkshop, reAuditWith,
-    toggleTheme,
+    toggleTheme, signOut, toggleAuditQueueMinimized,
 });
 
-// Nav links
+// ── Nav links ──────────────────────────────────────────
+
 document.querySelectorAll(".nav-link").forEach(link => {
     link.addEventListener("click", (e) => {
         e.preventDefault();
@@ -78,30 +93,53 @@ document.querySelectorAll(".nav-link").forEach(link => {
     });
 });
 
-// Top-bar audit button
 const btnRunAudit = document.getElementById("btn-run-audit");
 if (btnRunAudit) btnRunAudit.addEventListener("click", runFullAudit);
 
-window.addEventListener("hashchange", routeFromHash);
-window.addEventListener("hashchange", refreshAuditQueue);
-document.addEventListener("DOMContentLoaded", () => {
+// ── Botón "Sign Out" en el navbar ───────────────────────
+
+const btnSignOut = document.getElementById("btn-sign-out");
+if (btnSignOut) {
+    btnSignOut.addEventListener("click", signOut);
+}
+
+// ── Eventos de perfil ──────────────────────────────────
+
+window.addEventListener("profile:selected", (e) => {
+    updateProfileBadge();
+    showToast(`Perfil activo: ${e.detail?.name || ""}`, "success");
     routeFromHash();
     refreshAuditQueue();
     initChatbotBubble();
-    const profileSelect = document.getElementById("profile-select");
-    if (profileSelect) {
-        profileSelect.value = state.currentProfile;
-        profileSelect.addEventListener("change", (e) => setProfile(e.target.value));
-    }
     applyProfileUI();
 });
 
-// In case DOMContentLoaded already fired (module loaded after parse)
-if (document.readyState !== "loading") {
+window.addEventListener("profile:expired", () => {
+    clearProfileSession();
+    showProfileSelector();
+});
+
+// ── Inicialización principal ───────────────────────────
+
+function boot() {
+    if (!hasActiveSession()) {
+        showProfileSelector();
+        return;
+    }
+    updateProfileBadge();
     routeFromHash();
     refreshAuditQueue();
     initChatbotBubble();
     applyProfileUI();
+}
+
+window.addEventListener("hashchange", routeFromHash);
+window.addEventListener("hashchange", refreshAuditQueue);
+
+document.addEventListener("DOMContentLoaded", boot);
+
+if (document.readyState !== "loading") {
+    boot();
 }
 
 setInterval(refreshAuditQueue, 15000);

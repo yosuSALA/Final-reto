@@ -1,14 +1,17 @@
 """
 Datos demo realistas para presentacion del hackathon.
 Incluye talleres, tarifario, siniestros y facturas con anomalias plantadas.
+Todos los datos se crean bajo el perfil por defecto (DEFAULT_PROFILE_ID).
 """
 import json
 from datetime import datetime, timedelta
-from backend.database import SessionLocal, init_db
+from backend.database import SessionLocal, init_db, DEFAULT_PROFILE_ID
 from backend.models import (
     Workshop, Siniestro, Invoice, InvoiceItem, TariffItem,
     Ramo, Cobertura, EstadoSiniestro
 )
+
+PID = DEFAULT_PROFILE_ID
 
 
 def seed_database():
@@ -16,22 +19,22 @@ def seed_database():
     db = SessionLocal()
 
     # --- TALLERES ---
-    if db.query(Workshop).count() == 0:
+    if db.query(Workshop).filter(Workshop.profile_id == PID).count() == 0:
         workshops = [
-            Workshop(name="AutoFix S.A.", ruc="0992847561001", address="Av. Juan Tanca Marengo Km 4.5, Guayaquil", phone="04-2345678", email="contacto@autofix.demo.ec", notify_automatically=1),
-            Workshop(name="TallerPro Cia. Ltda.", ruc="0991234567001", address="Cdla. Kennedy Norte, Guayaquil", phone="04-3456789", email="gerencia@tallerpro.demo.ec", notify_automatically=1),
-            Workshop(name="CarGlass Ecuador", ruc="0990987654001", address="Via Daule Km 10, Guayaquil", phone="04-4567890", email="info@carglass.demo.ec", notify_automatically=0),
+            Workshop(profile_id=PID, name="AutoFix S.A.", ruc="0992847561001", address="Av. Juan Tanca Marengo Km 4.5, Guayaquil", phone="04-2345678", email="contacto@autofix.demo.ec", notify_automatically=1),
+            Workshop(profile_id=PID, name="TallerPro Cia. Ltda.", ruc="0991234567001", address="Cdla. Kennedy Norte, Guayaquil", phone="04-3456789", email="gerencia@tallerpro.demo.ec", notify_automatically=1),
+            Workshop(profile_id=PID, name="CarGlass Ecuador", ruc="0990987654001", address="Via Daule Km 10, Guayaquil", phone="04-4567890", email="info@carglass.demo.ec", notify_automatically=0),
         ]
         db.add_all(workshops)
         db.flush()
     else:
-        workshops = db.query(Workshop).order_by(Workshop.id).all()
+        workshops = db.query(Workshop).filter(Workshop.profile_id == PID).order_by(Workshop.id).all()
 
     # --- TARIFARIO ---
-    if db.query(TariffItem).count() == 0:
+    if db.query(TariffItem).filter(TariffItem.profile_id == PID).count() == 0:
         tariff_items = [
-            TariffItem(code="REP-PAR01", description="Parabrisas delantero", category="repuesto", max_price=280.00, tolerance_pct=10, expected_qty_min=1, expected_qty_max=1, applicable_claim_types=json.dumps(["Vehículos"])),
-            TariffItem(code="REP-PAR02", description="Parabrisas trasero", category="repuesto", max_price=220.00, tolerance_pct=10, expected_qty_min=1, expected_qty_max=1, applicable_claim_types=json.dumps(["Vehículos"])),
+            TariffItem(profile_id=PID, code="REP-PAR01", description="Parabrisas delantero", category="repuesto", max_price=280.00, tolerance_pct=10, expected_qty_min=1, expected_qty_max=1, applicable_claim_types=json.dumps(["Vehículos"])),
+            TariffItem(profile_id=PID, code="REP-PAR02", description="Parabrisas trasero", category="repuesto", max_price=220.00, tolerance_pct=10, expected_qty_min=1, expected_qty_max=1, applicable_claim_types=json.dumps(["Vehículos"])),
             TariffItem(code="REP-FAR01", description="Faro delantero (unidad)", category="repuesto", max_price=150.00, tolerance_pct=10, expected_qty_min=1, expected_qty_max=2, applicable_claim_types=json.dumps(["Vehículos"])),
             TariffItem(code="REP-FAR02", description="Faro trasero (unidad)", category="repuesto", max_price=120.00, tolerance_pct=10, expected_qty_min=1, expected_qty_max=2, applicable_claim_types=json.dumps(["Vehículos"])),
             TariffItem(code="REP-GUA01", description="Guardachoque delantero", category="repuesto", max_price=350.00, tolerance_pct=10, expected_qty_min=1, expected_qty_max=1, applicable_claim_types=json.dumps(["Vehículos"])),
