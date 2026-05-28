@@ -322,3 +322,89 @@ window.askDeepSeekAboutClaim = async function(claimId) {
         }
     }
 };
+
+// ── Claim Form ──────────────────────────────────────────
+
+function renderClaimForm() {
+    const today = new Date().toISOString().slice(0, 10);
+    return `
+    <div class="card" style="margin-bottom:18px;border-left:4px solid var(--accent-indigo);">
+        <div class="card-header"><h2>Nuevo Siniestro Manual</h2></div>
+        <div class="card-body">
+            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
+                <label>Poliza <input id="sn-policy" type="text" placeholder="POL-0001" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;"></label>
+                <label>ID Asegurado <input id="sn-insured-id" type="text" placeholder="ASE-12345" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;"></label>
+                <label>Nombre del Asegurado <input id="sn-insured-name" type="text" placeholder="Juan Perez" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;"></label>
+                <label>Fecha de Ocurrencia <input id="sn-date" type="date" value="${today}" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;"></label>
+                <label>Ramo
+                    <select id="sn-ramo" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;">
+                        ${RAMO_OPTIONS.map(r => `<option value="${r}" ${r === "Vehiculos" ? "selected" : ""}>${r}</option>`).join("")}
+                    </select>
+                </label>
+                <label>Cobertura
+                    <select id="sn-cobertura" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;">
+                        ${COBERTURA_OPTIONS.map(c => `<option value="${c}" ${c === "Choque" ? "selected" : ""}>${c}</option>`).join("")}
+                    </select>
+                </label>
+                <label>Estado
+                    <select id="sn-estado" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;">
+                        ${ESTADO_OPTIONS.map(s => `<option value="${s}" ${s === "Reserva" ? "selected" : ""}>${s}</option>`).join("")}
+                    </select>
+                </label>
+                <label>Monto Reclamado (USD) <input id="sn-monto" type="number" step="0.01" min="0" value="0" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;"></label>
+                <label>Sucursal <input id="sn-sucursal" type="text" placeholder="Quito-Norte" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;"></label>
+                <label>Placa del Vehiculo <input id="sn-plate" type="text" placeholder="PBA-1234" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;text-transform:uppercase;"></label>
+                <label>Marca <input id="sn-brand" type="text" placeholder="Toyota" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;"></label>
+                <label>Modelo <input id="sn-model" type="text" placeholder="Corolla" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;"></label>
+                <label>Anio <input id="sn-year" type="number" min="1900" max="2100" placeholder="2022" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;"></label>
+                <label style="grid-column:1/3;">Descripcion <textarea id="sn-desc" placeholder="Detalles del incidente..." style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;min-height:60px;resize:vertical;"></textarea></label>
+            </div>
+            <p style="margin-top:10px;font-size:0.78rem;color:var(--text-muted);">
+                Si la poliza, asegurado o vehiculo no existen aun, se crearan placeholders preservando el audit trail.
+            </p>
+            <div style="margin-top:14px;display:flex;gap:8px;">
+                <button class="btn btn-success" onclick="submitNewClaim()">Guardar Siniestro</button>
+                <button class="btn btn-ghost" onclick="toggleClaimForm()">Cancelar</button>
+            </div>
+        </div>
+    </div>
+    `;
+}
+
+export function toggleClaimForm() {
+    state.showClaimForm = !state.showClaimForm;
+    renderSiniestrosView();
+}
+
+export async function submitNewClaim() {
+    const policy = (document.getElementById("sn-policy").value || "").trim();
+    const insuredId = (document.getElementById("sn-insured-id").value || "").trim();
+    const incidentDate = (document.getElementById("sn-date").value || "").trim();
+    if (!policy || !insuredId || !incidentDate) {
+        showToast("Poliza, ID asegurado y fecha son requeridos", "error");
+        return;
+    }
+    const yearRaw = (document.getElementById("sn-year").value || "").trim();
+    const payload = {
+        policy_number: policy,
+        insured_id: insuredId,
+        insured_name: (document.getElementById("sn-insured-name").value || "").trim(),
+        ramo: document.getElementById("sn-ramo").value,
+        cobertura: document.getElementById("sn-cobertura").value,
+        estado: document.getElementById("sn-estado").value,
+        incident_date: incidentDate,
+        monto_reclamado: parseFloat(document.getElementById("sn-monto").value || "0"),
+        sucursal: (document.getElementById("sn-sucursal").value || "").trim(),
+        descripcion: (document.getElementById("sn-desc").value || "").trim(),
+        vehicle_plate: (document.getElementById("sn-plate").value || "").trim().toUpperCase(),
+        vehicle_brand: (document.getElementById("sn-brand").value || "").trim(),
+        vehicle_model: (document.getElementById("sn-model").value || "").trim(),
+        vehicle_year: yearRaw ? parseInt(yearRaw, 10) : null,
+    };
+    const res = await apiPost("/claims", payload);
+    if (res) {
+        showToast(`Siniestro ${res.claim_number} creado`, "success");
+        state.showClaimForm = false;
+        await loadSiniestros();
+    }
+}
