@@ -215,6 +215,56 @@ export function clearClaimsWorkflowFocus() {
     renderSiniestrosView();
 }
 
+// ── Summary Modal ───────────────────────────────────────
+
+let _currentSummaryClaimId = null;
+
+export async function openSummaryModal(claimId) {
+    _currentSummaryClaimId = claimId;
+    const modal = document.getElementById("summary-modal");
+    const content = document.getElementById("summary-content");
+    if (!modal || !content) return;
+    modal.style.display = "flex";
+    content.innerHTML = '<div style="display:flex;align-items:center;gap:8px;"><span class="spinner"></span> Cargando resumen...</div>';
+
+    const data = await apiFetch(`/claims/${claimId}/executive-summary`);
+    if (!data) {
+        content.textContent = "No se pudo cargar el resumen.";
+        return;
+    }
+
+    const c = data.claim || {};
+    const v = c.vehicle || {};
+    const ownerRows = (data.owner_history || []).map((r) => `
+        <tr><td>${r.claim_number}</td><td>${r.coverage || "-"}</td><td>${(r.date || "-").slice(0,10)}</td><td>$${(r.amount || 0).toFixed(2)}</td><td>${r.risk_score ?? "N/A"}</td></tr>
+    `).join("");
+    const vehicleRows = (data.vehicle_history || []).map((r) => `
+        <tr><td>${r.claim_number}</td><td>${r.coverage || "-"}</td><td>${(r.date || "-").slice(0,10)}</td><td>$${(r.amount || 0).toFixed(2)}</td><td>${r.risk_score ?? "N/A"}</td></tr>
+    `).join("");
+
+    content.innerHTML = `
+        <div class="card" style="margin-bottom:12px;"><div class="card-body">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div><strong>Siniestro:</strong> ${c.claim_number || "-"}</div>
+                <div><strong>Póliza:</strong> ${c.policy_number || "-"}</div>
+                <div><strong>Asegurado:</strong> ${c.insured_name || "-"}</div>
+                <div><strong>ID Asegurado:</strong> ${c.insured_id || "-"}</div>
+            </div>
+            <p style="margin-top:10px;"><strong>Resumen:</strong> ${data.executive_summary || "-"}</p>
+        </div></div>
+        <div class="grid-2">
+            <div class="card"><div class="card-header"><h2>Historial del Dueño</h2></div><div class="card-body table-wrap"><table><thead><tr><th>Siniestro</th><th>Cobertura</th><th>Fecha</th><th>Monto</th><th>Riesgo</th></tr></thead><tbody>${ownerRows || "<tr><td colspan='5'>Sin historial</td></tr>"}</tbody></table></div></div>
+            <div class="card"><div class="card-header"><h2>Historial del Vehículo</h2></div><div class="card-body table-wrap"><table><thead><tr><th>Siniestro</th><th>Cobertura</th><th>Fecha</th><th>Monto</th><th>Riesgo</th></tr></thead><tbody>${vehicleRows || "<tr><td colspan='5'>Sin historial</td></tr>"}</tbody></table></div></div>
+        </div>
+    `;
+}
+
+export function closeSummaryModal() {
+    const modal = document.getElementById("summary-modal");
+    if (modal) modal.style.display = "none";
+    _currentSummaryClaimId = null;
+}
+
 // ── Agrupacion por asegurado ────────────────────────────
 
 function groupByInsured(claims) {
@@ -228,9 +278,9 @@ function groupByInsured(claims) {
 }
 
 function renderGroupedRows(groups) {
-    if (groups.length === 0) return '<tr><td colspan="12" class="empty-cell">No hay siniestros para este filtro.</td></tr>';
+    if (groups.length === 0) return '<tr><td colspan="11" class="empty-cell">No hay siniestros para este filtro.</td></tr>';
     return groups.map(([name, claims]) => `
-        <tr class="group-header"><td colspan="12"><strong>${name}</strong> (${claims.length} siniestro${claims.length !== 1 ? "s" : ""})</td></tr>
+        <tr class="group-header"><td colspan="11"><strong>${name}</strong> (${claims.length} siniestro${claims.length !== 1 ? "s" : ""})</td></tr>
         ${claims.map(c => renderClaimRow(c)).join("")}
     `).join("");
 }
@@ -238,7 +288,7 @@ function renderGroupedRows(groups) {
 // ── Busqueda con debounce ───────────────────────────────
 
 let _searchTimer = null;
-window.debouncedSearch = function (value) {
+window.debouncedSearch = function(value) {
     if (_searchTimer) clearTimeout(_searchTimer);
     _searchTimer = setTimeout(() => {
         setClaimsSearch(value);
@@ -247,14 +297,13 @@ window.debouncedSearch = function (value) {
 
 // ── Consultar DeepSeek sobre un siniestro ────────────────
 
-window.askDeepSeekAboutClaim = async function (claimId) {
+window.askDeepSeekAboutClaim = async function(claimId) {
     const c = state.claimsData.find(x => x.id === claimId);
     if (!c) return;
-    const q = `Analiza el siniestro ${c.claim_number} del asegurado ${c.insured_name} (vehiculo: ${c.vehicle} placa ${c.vehicle_plate}, tipo: ${c.claim_type}, cobertura: ${c.cobertura}, monto reclamado: $${c.monto_reclamado || 0}). Score de fraude actual: ${c.fraud_score ?? "N/A"} (${c.fraud_classification || "N/A"}). ¿Por qué fue marcado con este riesgo? ¿Qué seniales de fraude aplican y que recomendacion das?`;
+    const q = `Analiza el siniestro ${c.claim_number} del asegurado ${c.insured_name} (tipo: ${c.claim_type}, cobertura: ${c.cobertura}, monto reclamado: $${c.monto_reclamado || 0}). Score de fraude actual: ${c.fraud_score ?? "N/A"} (${c.fraud_classification || "N/A"}). Por que fue marcado con este riesgo? Que seniales de fraude aplican y que recomendacion das?`;
 
     const panel = document.getElementById("chatbot-panel");
     const toggle = document.getElementById("chatbot-toggle");
-    const body = document.getElementById("chatbot-body");
     const input = document.getElementById("chatbot-input");
 
     if (panel && toggle) {
@@ -273,36 +322,3 @@ window.askDeepSeekAboutClaim = async function (claimId) {
         }
     }
 };
-
-export async function submitNewClaim() {
-    const policy = (document.getElementById("sn-policy").value || "").trim();
-    const insuredId = (document.getElementById("sn-insured-id").value || "").trim();
-    const incidentDate = (document.getElementById("sn-date").value || "").trim();
-    if (!policy || !insuredId || !incidentDate) {
-        showToast("Póliza, ID asegurado y fecha son requeridos", "error");
-        return;
-    }
-    const yearRaw = (document.getElementById("sn-year").value || "").trim();
-    const payload = {
-        policy_number: policy,
-        insured_id: insuredId,
-        insured_name: (document.getElementById("sn-insured-name").value || "").trim(),
-        ramo: document.getElementById("sn-ramo").value,
-        cobertura: document.getElementById("sn-cobertura").value,
-        estado: document.getElementById("sn-estado").value,
-        incident_date: incidentDate,
-        monto_reclamado: parseFloat(document.getElementById("sn-monto").value || "0"),
-        sucursal: (document.getElementById("sn-sucursal").value || "").trim(),
-        descripcion: (document.getElementById("sn-desc").value || "").trim(),
-        vehicle_plate: (document.getElementById("sn-plate").value || "").trim().toUpperCase(),
-        vehicle_brand: (document.getElementById("sn-brand").value || "").trim(),
-        vehicle_model: (document.getElementById("sn-model").value || "").trim(),
-        vehicle_year: yearRaw ? parseInt(yearRaw, 10) : null,
-    };
-    const res = await apiPost("/claims", payload);
-    if (res) {
-        showToast(`Siniestro ${res.claim_number} creado`, "success");
-        state.showClaimForm = false;
-        await loadSiniestros();
-    }
-}
