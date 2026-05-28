@@ -4,11 +4,15 @@ import { fetchProfiles, createProfile, fetchProfileToken } from "./api.js";
 // ── Role System ────────────────────────────────────────
 
 const ROLE_LABELS = {
-    demo_jurado:  { label: "Demo / Jurado",        icon: "⭐", color: "#6366f1" },
+    demo_jurado:  { label: "Demo / Jurado",          icon: "⭐", color: "#6366f1" },
     analista:     { label: "Analista de Siniestros", icon: "📋", color: "#0ea5e9" },
-    antifraude:   { label: "Anti-Fraude",           icon: "🔍", color: "#ef4444" },
-    jefatura:     { label: "Jefatura",              icon: "📊", color: "#f59e0b" },
-    auditoria:    { label: "Auditoría",             icon: "✅", color: "#10b981" },
+    antifraude:   { label: "Anti-Fraude",            icon: "🔍", color: "#ef4444" },
+    jefatura:     { label: "Jefatura",               icon: "📊", color: "#f59e0b" },
+    auditoria:    { label: "Auditoría",              icon: "✅", color: "#10b981" },
+    operaciones:  { label: "Operaciones",            icon: "🛠", color: "#0284c7" },
+    costos:       { label: "Costos",                 icon: "💲", color: "#a855f7" },
+    contabilidad: { label: "Contabilidad",           icon: "📒", color: "#14b8a6" },
+    legal:        { label: "Legal",                  icon: "⚖", color: "#475569" },
 };
 
 export function getRoleLabel(role) {
@@ -21,42 +25,103 @@ export function detectRole(profileName) {
     if (n.includes("antifraude") || n.includes("fraude") || n.includes("fraud")) return "antifraude";
     if (n.includes("jefatura") || n.includes("jefe") || n.includes("gerente") || n.includes("director")) return "jefatura";
     if (n.includes("auditoria") || n.includes("auditor") || n.includes("audit")) return "auditoria";
+    if (n.includes("operacion") || n.includes("ops")) return "operaciones";
+    if (n.includes("costos") || n.includes("costo")) return "costos";
+    if (n.includes("contabilidad") || n.includes("contador") || n.includes("contable")) return "contabilidad";
+    if (n.includes("legal") || n.includes("abogad")) return "legal";
     if (n.includes("analista") || n.includes("analyst")) return "analista";
     return "analista";
 }
 
 export function getPermissions() {
     const role = state.currentRole || "analista";
+    // Permisos de UI por rol.
+    // - canRegisterClaim: puede crear siniestros (Operaciones)
+    // - canManageTariff: puede crear/editar/eliminar tarifario (Costos, Contabilidad)
+    // - canApproveInitial / canEscalate: decisión inicial sobre auditoría (Costos, Contabilidad)
+    // - canFinalDecision: decisión sobre siniestros ya escalados (Jefatura)
+    // - canViewLegalNotifications: ver bandeja de Legal
     const map = {
         demo_jurado: {
             canRunAuditAll: true, canRunAI: true,
             canViewFraud: true, canViewPortfolio: true,
             canViewCustomers: true, canViewAudit: true,
-            canReviewDecision: false, canManageTariff: false,
+            canRegisterClaim: true, canManageTariff: true,
+            canApproveInitial: true, canEscalate: true,
+            canFinalDecision: true, canViewLegalNotifications: true,
+            canReviewDecision: true, // legado
         },
         analista: {
             canRunAuditAll: false, canRunAI: false,
             canViewFraud: false, canViewPortfolio: false,
             canViewCustomers: true, canViewAudit: false,
-            canReviewDecision: true, canManageTariff: false,
+            canRegisterClaim: false, canManageTariff: false,
+            canApproveInitial: false, canEscalate: false,
+            canFinalDecision: false, canViewLegalNotifications: false,
+            canReviewDecision: false,
         },
         antifraude: {
             canRunAuditAll: true, canRunAI: true,
             canViewFraud: true, canViewPortfolio: false,
             canViewCustomers: true, canViewAudit: false,
-            canReviewDecision: true, canManageTariff: false,
+            canRegisterClaim: false, canManageTariff: false,
+            canApproveInitial: false, canEscalate: false,
+            canFinalDecision: false, canViewLegalNotifications: false,
+            canReviewDecision: false, // Anti-Fraude NO toma decisión de aprobar/escalar
         },
         jefatura: {
             canRunAuditAll: true, canRunAI: true,
             canViewFraud: true, canViewPortfolio: true,
             canViewCustomers: true, canViewAudit: true,
-            canReviewDecision: false, canManageTariff: true,
+            canRegisterClaim: false, canManageTariff: false,
+            canApproveInitial: false, canEscalate: false,
+            canFinalDecision: true, canViewLegalNotifications: false,
+            canReviewDecision: false,
         },
         auditoria: {
             canRunAuditAll: true, canRunAI: true,
             canViewFraud: true, canViewPortfolio: true,
             canViewCustomers: true, canViewAudit: true,
-            canReviewDecision: false, canManageTariff: false,
+            canRegisterClaim: false, canManageTariff: false,
+            canApproveInitial: false, canEscalate: false,
+            canFinalDecision: false, canViewLegalNotifications: false,
+            canReviewDecision: false,
+        },
+        operaciones: {
+            canRunAuditAll: false, canRunAI: false,
+            canViewFraud: false, canViewPortfolio: false,
+            canViewCustomers: true, canViewAudit: false,
+            canRegisterClaim: true, canManageTariff: false,
+            canApproveInitial: false, canEscalate: false,
+            canFinalDecision: false, canViewLegalNotifications: false,
+            canReviewDecision: false,
+        },
+        costos: {
+            canRunAuditAll: false, canRunAI: false,
+            canViewFraud: false, canViewPortfolio: false,
+            canViewCustomers: true, canViewAudit: true,
+            canRegisterClaim: false, canManageTariff: true,
+            canApproveInitial: true, canEscalate: true,
+            canFinalDecision: false, canViewLegalNotifications: false,
+            canReviewDecision: false,
+        },
+        contabilidad: {
+            canRunAuditAll: false, canRunAI: false,
+            canViewFraud: false, canViewPortfolio: false,
+            canViewCustomers: true, canViewAudit: true,
+            canRegisterClaim: false, canManageTariff: true,
+            canApproveInitial: true, canEscalate: true,
+            canFinalDecision: false, canViewLegalNotifications: false,
+            canReviewDecision: false,
+        },
+        legal: {
+            canRunAuditAll: false, canRunAI: false,
+            canViewFraud: false, canViewPortfolio: false,
+            canViewCustomers: false, canViewAudit: false,
+            canRegisterClaim: false, canManageTariff: false,
+            canApproveInitial: false, canEscalate: false,
+            canFinalDecision: false, canViewLegalNotifications: true,
+            canReviewDecision: false,
         },
     };
     return map[role] || map.analista;
@@ -127,6 +192,10 @@ export function showProfileSelector() {
                     maxlength="80"
                 />
                 <select id="new-profile-role" class="profile-role-select">
+                    <option value="operaciones">🛠 Operaciones</option>
+                    <option value="costos">💲 Costos</option>
+                    <option value="contabilidad">📒 Contabilidad</option>
+                    <option value="legal">⚖ Legal</option>
                     <option value="analista">📋 Analista de Siniestros</option>
                     <option value="antifraude">🔍 Anti-Fraude</option>
                     <option value="jefatura">📊 Jefatura</option>
@@ -263,7 +332,8 @@ export function updateProfileBadge() {
         roleBadge.style.color = roleInfo.color;
     }
 
-    const isDashboardRole = ["jefatura", "demo_jurado"].includes(state.currentRole);
+    const role = state.currentRole;
+    const isDashboardRole = ["jefatura", "demo_jurado", "legal"].includes(role);
     const homeLink = document.getElementById("nav-dashboard");
     const homeLabel = document.getElementById("nav-home-label");
     const auditPanelLink = document.getElementById("nav-audit-panel");
@@ -276,6 +346,31 @@ export function updateProfileBadge() {
         auditPanelLink.style.display = isDashboardRole ? "flex" : "none";
         const textNode = Array.from(auditPanelLink.childNodes).find((node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim());
         if (textNode) textNode.textContent = " Flujo";
+    }
+
+    // Visibilidad de items del navbar según restricciones por rol
+    const perms = getPermissions();
+    const uploadLink = document.getElementById("nav-upload");
+    if (uploadLink) {
+        // "Cargar" sirve para subir facturas; sólo Operaciones registra siniestros pero
+        // las facturas se cargan también desde otros roles operativos. Mantenemos visible.
+        uploadLink.style.display = (role === "legal") ? "none" : "";
+    }
+    const tarifarioLink = document.getElementById("nav-tarifario");
+    if (tarifarioLink) {
+        tarifarioLink.style.display = ""; // Tarifario es visible para todos (read).
+    }
+    const auditLink = document.getElementById("nav-auditorias");
+    if (auditLink) {
+        auditLink.style.display = (role === "legal") ? "none" : "";
+    }
+    const sinLink = document.getElementById("nav-siniestros");
+    if (sinLink) {
+        sinLink.style.display = ""; // Todos ven la lista de siniestros (read).
+    }
+    const runAuditBtn = document.getElementById("btn-run-audit");
+    if (runAuditBtn) {
+        runAuditBtn.style.display = perms.canRunAuditAll ? "" : "none";
     }
 }
 

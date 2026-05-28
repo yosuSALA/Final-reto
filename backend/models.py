@@ -49,6 +49,7 @@ class AuditStatus(str, enum.Enum):
     APPROVED = "approved"
     REJECTED = "rejected"
     ESCALATED = "escalated"
+    SENT_TO_LEGAL = "sent_to_legal"
 
 
 class FindingSeverity(str, enum.Enum):

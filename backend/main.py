@@ -89,16 +89,21 @@ def get_profile(
     x_profile_token: str = Header(None, alias="X-Profile-Token"),
     db: Session = Depends(get_db),
 ) -> Profile:
-    """Valida X-Profile-Token y retorna el perfil activo. 403 si falta o es inválido."""
+    """Valida X-Profile-Token y retorna el perfil activo. 401 si falta o es inválido.
+
+    NOTA: usamos 401 (Unauthorized) cuando no hay token o el token es inválido
+    para distinguirlo de 403 (Forbidden), que indica que el rol no tiene permisos
+    sobre un recurso concreto. El cliente sólo debe re-loggear en 401.
+    """
     if not x_profile_token:
         raise HTTPException(
-            status_code=403,
+            status_code=401,
             detail="Header X-Profile-Token requerido. Selecciona un perfil primero.",
         )
     profile = verify_profile_token(x_profile_token, db)
     if not profile:
         raise HTTPException(
-            status_code=403,
+            status_code=401,
             detail="Token de perfil inválido o perfil inactivo.",
         )
     return profile
@@ -149,7 +154,10 @@ def create_profile(data: ProfileCreate, db: Session = Depends(get_db)):
     if db.query(Profile).filter(Profile.name == name).first():
         raise HTTPException(status_code=409, detail=f"Ya existe un perfil con el nombre '{name}'.")
 
-    valid_roles = {"demo_jurado", "analista", "antifraude", "jefatura", "auditoria"}
+    valid_roles = {
+        "demo_jurado", "analista", "antifraude", "jefatura", "auditoria",
+        "operaciones", "costos", "contabilidad", "legal",
+    }
     role = data.role if data.role in valid_roles else "analista"
 
     import uuid
@@ -483,6 +491,7 @@ def create_tariff(
     scope: ProfileScope = Depends(get_scope),
     db: Session = Depends(get_db),
 ):
+    scope.require_role("costos", "contabilidad")
     scope.require_write("tariffs")
     code = (data.code or "").strip().upper()
     if not code:
@@ -517,6 +526,7 @@ def update_tariff(
     scope: ProfileScope = Depends(get_scope),
     db: Session = Depends(get_db),
 ):
+    scope.require_role("costos", "contabilidad")
     scope.require_write("tariffs")
     tariff = scope.get_tariff(tariff_id)
     if not tariff:
@@ -533,6 +543,7 @@ def delete_tariff(
     scope: ProfileScope = Depends(get_scope),
     db: Session = Depends(get_db),
 ):
+    scope.require_role("costos", "contabilidad")
     scope.require_write("tariffs")
     t = scope.get_tariff(tariff_id)
     if not t:
@@ -643,6 +654,7 @@ async def import_tariffs_csv(
     db: Session = Depends(get_db),
 ):
     """Importación masiva de tarifario desde CSV."""
+    scope.require_role("costos", "contabilidad")
     scope.require_write("tariffs")
     if not file.filename.lower().endswith(".csv"):
         raise HTTPException(status_code=400, detail="El archivo debe ser .csv")
@@ -889,6 +901,7 @@ def create_claim(
     db: Session = Depends(get_db),
 ):
     """Crea un siniestro manualmente. Si la póliza/asegurado/vehículo no existen, los crea como placeholders."""
+    scope.require_role("operaciones")
     scope.require_write("siniestros")
 
     policy_number = (data.policy_number or "").strip()
@@ -1028,6 +1041,7 @@ async def import_claims_csv(
     db: Session = Depends(get_db),
 ):
     """Importación masiva de siniestros desde CSV. Sigue el mismo flujo que /api/tariffs/import-csv."""
+    scope.require_role("operaciones")
     scope.require_write("siniestros")
     if not file.filename.lower().endswith(".csv"):
         raise HTTPException(status_code=400, detail="El archivo debe ser .csv")
@@ -1251,6 +1265,11 @@ def get_claim_invoices(
 
 # ── Acción manual sobre auditoría ──────────────────────
 
+def _is_escalated(r) -> bool:
+    """True si el resultado ya fue escalado (espera decisión de Jefatura)."""
+    return r.status in (AuditStatus.ESCALATED, AuditStatus.SENT_TO_LEGAL)
+
+
 @app.post("/api/audit-results/{audit_id}/approve")
 def approve_audit(
     audit_id: int,
@@ -1261,9 +1280,15 @@ def approve_audit(
     r = scope.get_audit_result(audit_id)
     if not r:
         raise HTTPException(status_code=404, detail="Resultado de auditoría no encontrado.")
+    # Aprobación inicial: Costos/Contabilidad sobre siniestro no escalado.
+    # Aprobación final: Jefatura sobre siniestro escalado.
+    if _is_escalated(r):
+        scope.require_role("jefatura")
+    else:
+        scope.require_role("costos", "contabilidad")
     r.status = AuditStatus.APPROVED
     r.reviewed_at = datetime.utcnow()
-    r.reviewed_by = "auditor_manual"
+    r.reviewed_by = f"{scope.role}_manual"
     db.commit()
     return {"status": "approved", "audit_id": audit_id}
 
@@ -1278,9 +1303,16 @@ def reject_audit(
     r = scope.get_audit_result(audit_id)
     if not r:
         raise HTTPException(status_code=404, detail="Resultado de auditoría no encontrado.")
+    # El rechazo siempre lo cierra Jefatura sobre un siniestro escalado.
+    scope.require_role("jefatura")
+    if not _is_escalated(r):
+        raise HTTPException(
+            status_code=409,
+            detail="Jefatura sólo puede rechazar un siniestro previamente escalado por Costos/Contabilidad.",
+        )
     r.status = AuditStatus.REJECTED
     r.reviewed_at = datetime.utcnow()
-    r.reviewed_by = "auditor_manual"
+    r.reviewed_by = f"{scope.role}_manual"
     db.commit()
     return {"status": "rejected", "audit_id": audit_id}
 
@@ -1292,14 +1324,74 @@ def escalate_audit(
     db: Session = Depends(get_db),
 ):
     scope.require_write("audit_results")
+    scope.require_role("costos", "contabilidad")
     r = scope.get_audit_result(audit_id)
     if not r:
         raise HTTPException(status_code=404, detail="Resultado de auditoría no encontrado.")
     r.status = AuditStatus.ESCALATED
     r.reviewed_at = datetime.utcnow()
-    r.reviewed_by = "auditor_manual"
+    r.reviewed_by = f"{scope.role}_manual"
     db.commit()
     return {"status": "escalated", "audit_id": audit_id}
+
+
+@app.post("/api/audit-results/{audit_id}/send-to-legal")
+def send_to_legal(
+    audit_id: int,
+    scope: ProfileScope = Depends(get_scope),
+    db: Session = Depends(get_db),
+):
+    """Jefatura deriva un siniestro escalado al área Legal (alta urgencia)."""
+    scope.require_write("audit_results")
+    scope.require_role("jefatura")
+    r = scope.get_audit_result(audit_id)
+    if not r:
+        raise HTTPException(status_code=404, detail="Resultado de auditoría no encontrado.")
+    if r.status != AuditStatus.ESCALATED:
+        raise HTTPException(
+            status_code=409,
+            detail="Sólo se puede derivar a Legal un siniestro en estado 'escalated'.",
+        )
+    r.status = AuditStatus.SENT_TO_LEGAL
+    r.reviewed_at = datetime.utcnow()
+    r.reviewed_by = f"{scope.role}_manual"
+    db.commit()
+    return {"status": "sent_to_legal", "audit_id": audit_id}
+
+
+@app.get("/api/legal/notifications")
+def legal_notifications(
+    scope: ProfileScope = Depends(get_scope),
+    db: Session = Depends(get_db),
+):
+    """Lista los siniestros que Jefatura derivó al área Legal (urgentes)."""
+    results = scope.audit_results().filter(
+        AuditResult.status == AuditStatus.SENT_TO_LEGAL
+    ).order_by(AuditResult.reviewed_at.desc().nullslast()).all()
+    output = []
+    for r in results:
+        invoice = scope.get_invoice(r.invoice_id)
+        siniestro = scope.get_siniestro(r.siniestro_id)
+        output.append({
+            "audit_id": r.id,
+            "invoice_id": r.invoice_id,
+            "invoice_number": invoice.invoice_number if invoice else "",
+            "claim_id": siniestro.id_siniestro if siniestro else None,
+            "claim_number": f"SIN-{siniestro.id_siniestro}" if siniestro else "",
+            "claim_type": siniestro.ramo.value if siniestro and siniestro.ramo else "",
+            "claim_description": siniestro.descripcion if siniestro else "",
+            "insured_id": siniestro.id_asegurado if siniestro else "",
+            "policy_number": siniestro.id_poliza if siniestro else "",
+            "amount_claimed": siniestro.monto_reclamado if siniestro else None,
+            "invoice_total": invoice.total if invoice else 0,
+            "total_overcharge": r.total_overcharge,
+            "risk_score": r.risk_score,
+            "summary": r.summary,
+            "escalated_by": r.reviewed_by,
+            "received_at": r.reviewed_at.isoformat() if r.reviewed_at else None,
+            "urgency": "alta",
+        })
+    return output
 
 
 # ── Auditoría IA (DeepSeek) ─────────────────────────────

@@ -2,6 +2,7 @@ import { apiFetch, apiPost, apiPut, apiDelete, API } from "../api.js";
 import { state } from "../state.js";
 import { showToast } from "../utils.js";
 import { showCsvSchemaModal } from "../components/csvUpload.js";
+import { getPermissions } from "../auth.js";
 
 const CLAIM_TYPES = [
     "choque_frontal", "choque_lateral", "choque_trasero",
@@ -33,6 +34,15 @@ window.addEventListener("csv:imported", async (e) => {
 export function renderTarifarioView() {
     const page = document.getElementById("page-tarifario");
     const categories = [...new Set(state.tariffData.map(t => t.category))];
+    const perms = getPermissions();
+    const canEdit = !!perms.canManageTariff;
+    const readOnlyBanner = canEdit ? "" : `
+        <div class="workflow-context-banner" style="background:rgba(71,85,105,0.08);border-left:3px solid #475569;">
+            <div>
+                <strong>Tarifario vigente — sólo lectura</strong>
+                <span>Tu rol no permite modificar el tarifario. Solo Costos y Contabilidad pueden editarlo.</span>
+            </div>
+        </div>`;
     page.innerHTML = `
         <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;">
             <div>
@@ -40,14 +50,15 @@ export function renderTarifarioView() {
                 <p>Precios maximos acordados entre la aseguradora y los talleres.</p>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                <button class="btn btn-ghost" onclick="showCsvSchemaModal('tarifario')" title="Importar múltiples items desde archivo CSV">
+                ${canEdit ? `<button class="btn btn-ghost" onclick="showCsvSchemaModal('tarifario')" title="Importar múltiples items desde archivo CSV">
                     ⬆ Importar CSV
-                </button>
-                <button class="btn btn-primary" onclick="toggleTariffForm()">
+                </button>` : ""}
+                ${canEdit ? `<button class="btn btn-primary" onclick="toggleTariffForm()">
                     ${state.showTariffForm ? "✕ Cerrar formulario" : "+ Añadir Manual"}
-                </button>
+                </button>` : ""}
             </div>
         </div>
+        ${readOnlyBanner}
         ${state.showTariffForm ? renderTariffForm() : ""}
         <div style="display:flex; gap:8px; margin-bottom:16px;">
             <button class="btn btn-ghost btn-sm" onclick="toggleAllTarif(true)">Expandir todo</button>
@@ -119,19 +130,25 @@ function renderTariffForm() {
 
 function renderTarifRow(t) {
     const editing = state.tarifEditingId === t.id;
+    const canEdit = !!getPermissions().canManageTariff;
     const aplica = (t.applicable_claim_types || []).map(c => c.replace(/_/g, ' ')).join(", ") || "—";
-    const priceCell = editing
+    const priceCell = editing && canEdit
         ? `<div style="display:flex;align-items:center;gap:6px;">$<input type="number" step="0.01" id="tariff-${t.id}" value="${t.max_price.toFixed(2)}" style="width:90px; padding:4px 6px; border:1px solid var(--accent-indigo); border-radius:4px;" autofocus></div>`
         : `<span style="font-weight:600">$${t.max_price.toFixed(2)}</span>`;
-    const actionCell = editing
-        ? `<div style="display:flex;gap:4px;justify-content:flex-end;">
+    let actionCell;
+    if (!canEdit) {
+        actionCell = `<span style="color:var(--text-muted);font-size:0.75rem;">—</span>`;
+    } else if (editing) {
+        actionCell = `<div style="display:flex;gap:4px;justify-content:flex-end;">
               <button class="btn btn-success btn-sm" onclick="saveTariff(${t.id})">Guardar</button>
               <button class="btn btn-ghost btn-sm" onclick="cancelTariff()">Cancelar</button>
-           </div>`
-        : `<div style="display:flex;gap:4px;justify-content:flex-end;">
+           </div>`;
+    } else {
+        actionCell = `<div style="display:flex;gap:4px;justify-content:flex-end;">
               <button class="btn btn-info btn-sm" onclick="editTariff(${t.id})" style="background-color: var(--accent-indigo); color: white;">Modificar</button>
               <button class="btn btn-danger btn-sm" onclick="deleteTariff(${t.id}, '${t.code}')">Eliminar</button>
            </div>`;
+    }
     return `
         <tr ${editing ? 'style="background:rgba(99,102,241,0.06)"' : ''}>
             <td><span style="font-family:var(--font-mono);color:var(--accent-indigo)">${t.code}</span></td>

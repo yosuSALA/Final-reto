@@ -36,9 +36,14 @@ export async function apiFetch(endpoint) {
         const res = await fetch(`${API}${endpoint}`, {
             headers: authHeaders(),
         });
-        if (res.status === 403) {
+        if (res.status === 401) {
             showToast("Sesión expirada. Selecciona tu perfil.", "error");
             window.dispatchEvent(new CustomEvent("profile:expired"));
+            return null;
+        }
+        if (res.status === 403) {
+            const err = await res.json().catch(() => ({}));
+            showToast(errorMessage(err, "Tu rol no tiene permisos para esta acción."), "warning");
             return null;
         }
         if (!res.ok) {
@@ -64,9 +69,14 @@ export async function apiPost(endpoint, body = null) {
             opts.body = JSON.stringify(body);
         }
         const res = await fetch(`${API}${endpoint}`, opts);
-        if (res.status === 403) {
+        if (res.status === 401) {
             showToast("Sesión expirada. Selecciona tu perfil.", "error");
             window.dispatchEvent(new CustomEvent("profile:expired"));
+            return null;
+        }
+        if (res.status === 403) {
+            const err = await res.json().catch(() => ({}));
+            showToast(errorMessage(err, "Tu rol no tiene permisos para esta acción."), "warning");
             return null;
         }
         if (!res.ok) {
@@ -87,9 +97,14 @@ export async function apiDelete(endpoint) {
             method: "DELETE",
             headers: authHeaders(),
         });
-        if (res.status === 403) {
+        if (res.status === 401) {
             showToast("Sesión expirada. Selecciona tu perfil.", "error");
             window.dispatchEvent(new CustomEvent("profile:expired"));
+            return null;
+        }
+        if (res.status === 403) {
+            const err = await res.json().catch(() => ({}));
+            showToast(errorMessage(err, "Tu rol no tiene permisos para esta acción."), "warning");
             return null;
         }
         if (!res.ok) {
@@ -111,9 +126,14 @@ export async function apiPut(endpoint, body) {
             headers: authHeaders({ "Content-Type": "application/json" }),
             body: JSON.stringify(body),
         });
-        if (res.status === 403) {
+        if (res.status === 401) {
             showToast("Sesión expirada. Selecciona tu perfil.", "error");
             window.dispatchEvent(new CustomEvent("profile:expired"));
+            return null;
+        }
+        if (res.status === 403) {
+            const err = await res.json().catch(() => ({}));
+            showToast(errorMessage(err, "Tu rol no tiene permisos para esta acción."), "warning");
             return null;
         }
         if (!res.ok) {

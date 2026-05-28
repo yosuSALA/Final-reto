@@ -1,6 +1,7 @@
 import { apiFetch, apiPost } from "../api.js";
 import { state } from "../state.js";
 import { renderRiskBadge, renderStatusBadge, showToast } from "../utils.js";
+import { getPermissions } from "../auth.js";
 
 const RAMO_OPTIONS = ["Vehículos", "Salud", "Vida", "Generales", "Hogar", "Otro"];
 const COBERTURA_OPTIONS = ["Choque", "Robo", "Atención médica", "Incendio", "Daño", "Otro"];
@@ -31,6 +32,7 @@ export function renderSiniestrosView() {
     // Solo reconstruir toolbar/outer si no existe
     let toolbar = page.querySelector(".siniestros-toolbar");
     if (!toolbar) {
+        const canRegister = !!getPermissions().canRegisterClaim;
         page.innerHTML = `
         <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;">
             <div>
@@ -38,12 +40,12 @@ export function renderSiniestrosView() {
                 <p>Siniestros reportados agrupados por asegurado. Expanda cada fila para ver facturas y consultar el riesgo con DeepSeek.</p>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                <button class="btn btn-ghost" onclick="showCsvSchemaModal('siniestros')" title="Importar múltiples siniestros desde archivo CSV">
+                ${canRegister ? `<button class="btn btn-ghost" onclick="showCsvSchemaModal('siniestros')" title="Importar múltiples siniestros desde archivo CSV">
                     ⬆ Importar CSV
-                </button>
-                <button class="btn btn-primary" onclick="toggleClaimForm()">
+                </button>` : ""}
+                ${canRegister ? `<button class="btn btn-primary" onclick="toggleClaimForm()">
                     ${state.showClaimForm ? "✕ Cerrar formulario" : "+ Añadir Manual"}
-                </button>
+                </button>` : ""}
             </div>
         </div>
         <div id="claim-form-container">
@@ -102,7 +104,8 @@ export function renderSiniestrosView() {
 
         const formContainer = page.querySelector("#claim-form-container");
         if (formContainer) {
-            formContainer.innerHTML = state.showClaimForm ? renderClaimForm() : "";
+            const canRegister = !!getPermissions().canRegisterClaim;
+            formContainer.innerHTML = (state.showClaimForm && canRegister) ? renderClaimForm() : "";
         }
     }
 

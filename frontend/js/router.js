@@ -38,10 +38,14 @@ export function navigateTo(page, params = {}) {
 }
 
 export function routeFromHash() {
-    const isDashboardRole = ["jefatura", "demo_jurado"].includes(state.currentRole);
+    const isDashboardRole = ["jefatura", "demo_jurado", "legal"].includes(state.currentRole);
     const defaultPage = isDashboardRole ? "dashboard" : "audit-panel";
     let hash = location.hash.replace("#", "") || defaultPage;
     if (!isDashboardRole && hash === "dashboard") hash = "audit-panel";
+    // Legal no debe entrar en auditorías ni en upload/cargar
+    if (state.currentRole === "legal" && (hash === "auditorias" || hash === "upload" || hash === "audit-panel")) {
+        hash = "dashboard";
+    }
     if (hash.startsWith("audit/"))       navigateTo("audit-detail", { auditId: hash.split("/")[1] });
     else if (hash.startsWith("pending/")) navigateTo("pending-detail", { invoiceId: hash.split("/")[1] });
     else if (hash.startsWith("claim/"))  navigateTo("claim-workspace", { claimId: hash.split("/")[1] });

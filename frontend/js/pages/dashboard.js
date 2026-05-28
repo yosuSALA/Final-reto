@@ -20,6 +20,10 @@ export async function loadDashboard() {
             case "antifraude":   await renderActionFlowPanel(page, perms); break;
             case "jefatura":     await renderJefatura(page, perms); break;
             case "auditoria":    await renderActionFlowPanel(page, perms); break;
+            case "operaciones":  await renderActionFlowPanel(page, perms); break;
+            case "costos":       await renderActionFlowPanel(page, perms); break;
+            case "contabilidad": await renderActionFlowPanel(page, perms); break;
+            case "legal":        await renderLegal(page, perms); break;
             default:             await renderActionFlowPanel(page, perms);
         }
     } catch (e) {
@@ -501,6 +505,107 @@ async function renderJefatura(page, perms) {
                 <div class="action-item ${(p.open_claims ?? 0) > 20 ? 'amber' : 'green'}">
                     <strong>Flujo Operativo</strong>
                     <span>${p.open_claims ?? 0} siniestros en proceso activo</span>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// ── ROLE: legal ────────────────────────────────────────
+
+async function renderLegal(page, perms) {
+    const [notifications, claims, tariffs] = await Promise.all([
+        apiFetch("/legal/notifications"),
+        apiFetch("/claims"),
+        apiFetch("/tariffs"),
+    ]);
+
+    const notif = notifications || [];
+    const allClaims = claims || [];
+    const allTariffs = tariffs || [];
+
+    page.innerHTML = `
+        ${roleHeader("legal", "Bandeja Legal", "Tarifarios vigentes, listado de siniestros y notificaciones de Jefatura")}
+
+        <div class="intel-kpi-wall intel-kpi-4">
+            ${kpiCard("Notificaciones de Jefatura", notif.length, notif.length > 0 ? "requieren revisión urgente" : "sin pendientes", notif.length > 0 ? "rose" : "emerald", iconAlert())}
+            ${kpiCard("Siniestros Registrados", allClaims.length, "total en cartera", "indigo", iconClaim())}
+            ${kpiCard("Items del Tarifario", allTariffs.length, "vigentes", "blue", iconReserve())}
+            ${kpiCard("Alta Urgencia", notif.filter(n => (n.urgency || "") === "alta").length, "casos derivados", "amber", iconWarn())}
+        </div>
+
+        <div class="card" style="margin-bottom:16px;border-left:4px solid ${notif.length > 0 ? '#ef4444' : '#10b981'};">
+            <div class="card-header">
+                <h2>📨 Notificaciones de Jefatura ${notif.length > 0 ? `<span class="badge badge-danger" style="margin-left:8px;">URGENTE</span>` : ""}</h2>
+                <span style="color:var(--text-muted);font-size:0.85rem;">Siniestros escalados derivados al área Legal</span>
+            </div>
+            <div class="card-body table-wrap">
+                ${notif.length === 0 ? '<div class="empty-state"><h3>Sin notificaciones</h3><p>Jefatura no ha derivado casos al área Legal.</p></div>' : `
+                <table>
+                    <thead><tr>
+                        <th>Siniestro</th><th>Factura</th><th>Asegurado</th>
+                        <th>Monto Reclamado</th><th>Sobrecobro</th>
+                        <th>Riesgo</th><th>Derivado</th><th>Urgencia</th>
+                    </tr></thead>
+                    <tbody>
+                        ${notif.map(n => `
+                        <tr class="clickable" onclick="location.hash='claim/${n.claim_id}'" style="border-left:3px solid #ef4444;">
+                            <td><strong>${n.claim_number}</strong><br><small style="color:var(--text-muted)">${n.claim_type || "—"}</small></td>
+                            <td><span style="font-family:var(--font-mono);font-size:0.85rem;">${n.invoice_number || "—"}</span></td>
+                            <td>${n.insured_id || "—"}<br><small style="color:var(--text-muted);font-family:var(--font-mono);">${n.policy_number || ""}</small></td>
+                            <td>$${fmt(n.amount_claimed ?? n.invoice_total ?? 0)}</td>
+                            <td style="color:var(--accent-rose);font-weight:600;">$${fmt(n.total_overcharge ?? 0)}</td>
+                            <td>${n.risk_score != null ? renderFraudScoreBadge(n.risk_score, n.risk_score >= 70 ? "Alto" : n.risk_score >= 30 ? "Medio" : "Bajo") : "—"}</td>
+                            <td><small>${n.received_at ? new Date(n.received_at).toLocaleString("es-EC", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}</small></td>
+                            <td><span class="badge badge-danger">${(n.urgency || "alta").toUpperCase()}</span></td>
+                        </tr>`).join("")}
+                    </tbody>
+                </table>`}
+            </div>
+        </div>
+
+        <div class="intel-grid-2">
+            <div class="card">
+                <div class="card-header">
+                    <h2>📋 Siniestros (sólo lectura)</h2>
+                    <span class="intel-period">${allClaims.length} registros</span>
+                </div>
+                <div class="card-body table-wrap" style="max-height:520px;overflow-y:auto;">
+                    <table>
+                        <thead><tr><th>Número</th><th>Ramo</th><th>Asegurado</th><th>Estado</th></tr></thead>
+                        <tbody>
+                            ${allClaims.slice(0, 50).map(c => `
+                            <tr class="clickable" onclick="location.hash='claim/${c.id}'">
+                                <td><strong>${c.claim_number}</strong></td>
+                                <td><small>${(c.claim_type || "").replace(/_/g, " ")}</small></td>
+                                <td><small>${c.insured_name || "—"}</small></td>
+                                <td>${renderStatusBadge(c.audit_status || c.estado || "pending")}</td>
+                            </tr>`).join("")}
+                        </tbody>
+                    </table>
+                    ${allClaims.length > 50 ? `<div style="padding:12px;text-align:center;color:var(--text-muted);font-size:0.85rem;">Mostrando primeros 50 — usa la pestaña "Siniestros" para ver todos.</div>` : ""}
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h2>💲 Tarifario Vigente</h2>
+                    <span class="intel-period">${allTariffs.length} items</span>
+                </div>
+                <div class="card-body table-wrap" style="max-height:520px;overflow-y:auto;">
+                    <table>
+                        <thead><tr><th>Código</th><th>Descripción</th><th>Categoría</th><th>Precio Máx.</th></tr></thead>
+                        <tbody>
+                            ${allTariffs.slice(0, 80).map(t => `
+                            <tr>
+                                <td><span style="font-family:var(--font-mono);color:var(--accent-indigo);font-size:0.85rem;">${t.code}</span></td>
+                                <td><small>${t.description}</small></td>
+                                <td><span class="cat-tag cat-${t.category || 'general'}">${t.category || 'general'}</span></td>
+                                <td><strong>$${(t.max_price ?? 0).toFixed(2)}</strong></td>
+                            </tr>`).join("")}
+                        </tbody>
+                    </table>
+                    ${allTariffs.length > 80 ? `<div style="padding:12px;text-align:center;color:var(--text-muted);font-size:0.85rem;">Mostrando primeros 80 — usa la pestaña "Tarifario" para ver todos.</div>` : ""}
                 </div>
             </div>
         </div>

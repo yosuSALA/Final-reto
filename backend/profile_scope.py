@@ -33,12 +33,34 @@ TABLE_PERMISSIONS: dict[str, dict[str, frozenset]] = {
         "write": frozenset(),
     },
     "jefatura": {
+        # Jefatura toma decisiones finales sobre siniestros escalados (audit_results)
         "read":  _ALL,
-        "write": frozenset(),
+        "write": frozenset({"audit_results"}),
     },
     "auditoria": {
         "read":  _ALL,
         "write": frozenset({"audit_results"}),
+    },
+    # ── Roles nuevos ──────────────────────────────────────
+    "operaciones": {
+        # Sólo Operaciones registra nuevos siniestros
+        "read":  _ALL,
+        "write": frozenset({"siniestros", "polizas", "asegurados", "workshops", "invoices"}),
+    },
+    "costos": {
+        # Costos modifica tarifario + aprobación inicial / escalamiento
+        "read":  _ALL,
+        "write": frozenset({"tariffs", "audit_results"}),
+    },
+    "contabilidad": {
+        # Contabilidad: igual que Costos
+        "read":  _ALL,
+        "write": frozenset({"tariffs", "audit_results"}),
+    },
+    "legal": {
+        # Legal: sólo lectura de tarifarios, siniestros y notificaciones
+        "read":  frozenset({"tariffs", "siniestros", "audit_results", "polizas", "asegurados", "workshops", "invoices"}),
+        "write": frozenset(),
     },
 }
 
@@ -65,6 +87,14 @@ class ProfileScope:
             raise HTTPException(
                 status_code=403,
                 detail=f"El rol '{self.role}' no tiene permisos de escritura sobre '{table}'.",
+            )
+
+    def require_role(self, *allowed_roles: str) -> None:
+        """Verifica que el rol activo esté en la lista permitida. 403 si no."""
+        if self.role not in allowed_roles and self.role != "demo_jurado":
+            raise HTTPException(
+                status_code=403,
+                detail=f"Esta acción está restringida a: {', '.join(allowed_roles)}. Tu rol actual: '{self.role}'.",
             )
 
     # ── Queries sin filtro por profile_id ─────────────────

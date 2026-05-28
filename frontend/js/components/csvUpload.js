@@ -134,9 +134,17 @@ export async function submitCsvUpload() {
             body: formData,
         });
 
-        if (res.status === 403) {
+        if (res.status === 401) {
             showToast("Sesión expirada. Selecciona tu perfil.", "error");
             window.dispatchEvent(new CustomEvent("profile:expired"));
+            return;
+        }
+        if (res.status === 403) {
+            const data = await res.json().catch(() => ({}));
+            const msg = _messageFromDetail(data.detail) || "Tu rol no tiene permisos para esta importación.";
+            resultEl.innerHTML = `<div class="csv-result-box csv-result-error"><strong>Permiso denegado:</strong> ${msg}</div>`;
+            btn.disabled = false;
+            btn.textContent = "Importar CSV";
             return;
         }
 

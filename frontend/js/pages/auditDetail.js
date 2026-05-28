@@ -20,6 +20,11 @@ export async function loadAuditDetail(auditId) {
         return;
     }
     const perms = getPermissions();
+    const isEscalated = data.status === "escalated" || data.status === "sent_to_legal";
+    // Costos / Contabilidad sólo deciden cuando el siniestro aún no está escalado.
+    const showInitialActions = !isEscalated && (perms.canApproveInitial || perms.canEscalate);
+    // Jefatura sólo decide cuando el siniestro está escalado (no enviado a Legal aún).
+    const showFinalActions = perms.canFinalDecision && data.status === "escalated";
     const riskColor = data.risk_score >= 70 ? "#ef4444" : data.risk_score >= 30 ? "#f59e0b" : "#10b981";
     const circumference = 2 * Math.PI * 45;
     const dashLen = (data.risk_score / 100) * circumference;
@@ -52,9 +57,11 @@ export async function loadAuditDetail(auditId) {
                 <button class="btn btn-info btn-sm" onclick="reAuditWith(${data.invoice_id}, 'rules')" style="background-color: var(--accent-emerald); color: white;" title="Re-auditar con motor de reglas (rápido)">⚡ Re-auditar Reglas</button>
                 <button class="btn btn-info btn-sm" onclick="reAuditWith(${data.invoice_id}, 'deepseek')" style="background-color: var(--accent-indigo); color: white;" title="Re-auditar con agente DeepSeek">🤖 Re-auditar IA</button>
                 <button class="btn btn-info btn-sm" onclick="previewReport(${data.audit_id})" style="background-color: #475569; color: white;">Reporte Interno</button>
-                ${perms.canReviewDecision ? `<button class="btn btn-success btn-sm" onclick="auditAction(${data.audit_id}, 'approve')">Aprobar</button>` : ""}
-                ${perms.canReviewDecision ? `<button class="btn btn-danger btn-sm" onclick="auditAction(${data.audit_id}, 'reject')">Rechazar</button>` : ""}
-                ${perms.canReviewDecision ? `<button class="btn btn-warning btn-sm" onclick="auditAction(${data.audit_id}, 'escalate')">Escalar</button>` : ""}
+                ${showInitialActions && perms.canApproveInitial ? `<button class="btn btn-success btn-sm" onclick="auditAction(${data.audit_id}, 'approve')" title="Aprobación inicial (Costos / Contabilidad)">Aprobar</button>` : ""}
+                ${showInitialActions && perms.canEscalate ? `<button class="btn btn-warning btn-sm" onclick="auditAction(${data.audit_id}, 'escalate')" title="Escalar a Jefatura para revisión cautelosa">Escalar</button>` : ""}
+                ${showFinalActions ? `<button class="btn btn-success btn-sm" onclick="auditAction(${data.audit_id}, 'approve')" title="Aprobación final (Jefatura)">Aprobar (final)</button>` : ""}
+                ${showFinalActions ? `<button class="btn btn-danger btn-sm" onclick="auditAction(${data.audit_id}, 'reject')" title="Rechazar siniestro escalado (Jefatura)">Rechazar</button>` : ""}
+                ${showFinalActions ? `<button class="btn btn-info btn-sm" onclick="auditAction(${data.audit_id}, 'send-to-legal')" title="Derivar a Legal (urgente)" style="background-color:#475569;color:white;">Enviar a Legal</button>` : ""}
             </div>
         </div>
         <div class="summary-box">${data.summary || ""}</div>
@@ -143,8 +150,13 @@ export async function loadAuditDetail(auditId) {
 export async function auditAction(auditId, action) {
     const result = await apiPost(`/audit-results/${auditId}/${action}`);
     if (result) {
-        const labels = { approve: "Aprobada", reject: "Rechazada", escalate: "Escalada" };
-        showToast(`Auditoría ${labels[action]} correctamente`, "success");
+        const labels = {
+            approve: "Aprobada",
+            reject: "Rechazada",
+            escalate: "Escalada",
+            "send-to-legal": "Derivada a Legal",
+        };
+        showToast(`Auditoría ${labels[action] || action} correctamente`, "success");
         if (typeof window.navigateTo === "function") window.navigateTo("auditorias");
         else location.hash = "auditorias";
     }
