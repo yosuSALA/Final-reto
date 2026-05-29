@@ -124,7 +124,7 @@ frontend/
 |---------|-----------|-------------|
 | `start.bat` | Windows | Instala deps + lanza uvicorn |
 | `bash start.sh` | Mac/Linux | Ídem |
-| `npm run dev` | Cualquiera | Express dev proxy en `:8010` |
+| `npm run dev` | Cualquiera | Express dev proxy en `:3000` |
 | `docker-compose up` | Cualquiera | Contenedor con bind de BD y `.env` |
 
 ---
@@ -168,7 +168,7 @@ frontend/
 | `DEEPSEEK_API_KEY` | No | Habilita el motor IA Deepseek V4 Flash. Sin ella, modo mock. |
 | `DEEPSEEK_API_KEY` | No | Chatbot con DeepSeek. Fallback a Gemini o formateador local. |
 | `DATABASE_PATH` | No | Ruta del archivo SQLite (default: `auditor.db`) |
-| `PORT` | No | Puerto Express proxy (default: `8010`) |
+| `PORT` | No | Puerto Express proxy (default: `3000`) |
 | `HOST` | No | Host Express proxy (default: `127.0.0.1`) |
 
 ---
