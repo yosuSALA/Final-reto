@@ -7,7 +7,7 @@
 ```mermaid
 graph TD
     UI["🖥️ Frontend SPA\nHTML5 / JS Vanilla / CSS3"]
-    PROXY["🔀 Proxy Express\nNode.js :8010"]
+    PROXY["🔀 Proxy Express\nNode.js :3000"]
     API["⚡ FastAPI\nPython 3.11 :8000"]
 
     UI -->|"fetch /api/*"| PROXY
