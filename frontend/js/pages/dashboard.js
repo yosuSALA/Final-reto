@@ -15,13 +15,7 @@ export async function loadDashboard() {
 
     try {
         switch (role) {
-            case "demo_jurado":
-                if (localStorage.getItem("auditPanelGuideHidden") === "1") {
-                    await renderDemoJurado(page, perms);
-                } else {
-                    await renderActionFlowPanel(page, perms);
-                }
-                break;
+            case "demo_jurado":  await renderDemoJurado(page, perms); break;
             case "analista":     await renderAnalista(page, perms); break;
             case "antifraude":   await renderAntifraude(page, perms); break;
             case "jefatura":     await renderJefatura(page, perms); break;
