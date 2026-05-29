@@ -6,76 +6,153 @@ Estado: listo para demo funcional
 
 ## Resumen
 
-1. Descripción general del proyecto
+## 1. Resumen general de cumplimiento
 
-Miraclex es una solución tecnológica orientada a la detección de posibles fraudes, sobrecobros, duplicados e incoherencias en siniestros de seguros antes del pago.
+| Criterio general                 | Estado | Justificación                                                                                                            |
+| -------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------ |
+| Alineación con el README oficial | Cumple | La matriz se actualiza tomando como referencia principal el README del proyecto.                                         |
+| Alcance del proyecto             | Cumple | El proyecto se define como un detector agéntico de posible fraude en siniestros, no únicamente como auditor de facturas. |
+| Enfoque funcional                | Cumple | El sistema audita facturas, identifica señales de riesgo, prioriza casos críticos y apoya la revisión humana.            |
+| Enfoque ético                    | Cumple | El sistema no acusa fraude, no aprueba pagos y no rechaza pagos automáticamente.                                         |
+| Revisión humana                  | Cumple | Toda alerta generada por el sistema debe ser revisada por un analista humano autorizado.                                 |
+| Estado general del proyecto      | Cumple | El proyecto integra backend, frontend, base de datos, reglas, score, semáforo, dashboard, chatbot e IA.                  |
 
-El sistema permite auditar facturas asociadas a siniestros, priorizar casos críticos y entregar alertas explicables para apoyar la revisión humana. La solución no acusa fraude ni toma decisiones automáticas de aprobación o rechazo; únicamente genera alertas de posible riesgo para que un analista autorizado realice la validación correspondiente.
+---
 
-2. Alcance funcional validado
-Requerimiento / Criterio	Estado	Evidencia de cumplimiento	Observación
-Auditoría de facturas de siniestros	Cumple	El sistema permite cargar y auditar facturas PDF relacionadas con siniestros.	La auditoría identifica posibles inconsistencias, sobrecostos, duplicados y señales de alerta.
-Detección de posibles fraudes	Cumple	El sistema aplica reglas determinísticas y análisis asistido por IA para detectar señales de posible fraude.	El lenguaje debe mantenerse como “posible fraude” o “alerta de riesgo”, evitando acusaciones directas.
-Priorización de casos críticos	Cumple	El sistema utiliza un score de riesgo de 0 a 100 y semáforo de criticidad.	Permite enfocar la revisión humana en casos de mayor prioridad.
-Semáforo de riesgo	Cumple	Se define clasificación Verde, Amarillo y Rojo según nivel de riesgo.	Debe mantenerse consistente en todos los documentos.
-Score de riesgo 0-100	Cumple	El sistema asigna un puntaje para clasificar el nivel de alerta.	El score es orientativo y no implica decisión automática.
-Dashboard de visualización	Cumple	El proyecto incluye dashboard para visualizar casos, alertas y priorización.	Debe describirse como herramienta de apoyo a la revisión.
-Chatbot de consulta	Cumple	El sistema incluye chatbot para consultar información del sistema y casos de siniestros.	Debe estar alineado con el motor IA definido en el README.
-Revisión humana obligatoria	Cumple	El README establece que toda alerta requiere validación humana.	Punto clave para evitar interpretación de decisión automática.
-No acusación ni decisión automática	Cumple	El sistema genera alertas, pero no acusa ni aprueba/rechaza pagos automáticamente.	Debe reforzarse en matriz, manuales y documentos funcionales.
-Uso de datos sintéticos	Cumple	El proyecto trabaja con información sintética para demostración y validación.	Importante para enfoque ético y de privacidad.
-3. Cumplimiento técnico
-Componente técnico	Estado	Evidencia de cumplimiento	Observación
-Backend FastAPI	Cumple	El README define FastAPI como backend principal.	Se debe mantener consistente con documentos técnicos.
-Frontend / Dashboard	Cumple	El README presenta una interfaz para visualizar resultados y alertas.	El dashboard debe describirse como componente funcional del sistema.
-Base de datos SQLite	Cumple	El sistema utiliza estructura de datos normalizada para siniestros, pólizas, asegurados, documentos, facturas e ítems.	La matriz no debe indicar que estos modelos no existen si el README los reconoce.
-Modelo de datos normalizado	Cumple	El README menciona tablas normalizadas para gestionar información del sistema.	Debe alinearse con modelo_datos.md.
-Motor de reglas determinísticas	Cumple	El sistema aplica reglas de negocio para detectar señales de alerta.	Debe vincularse con las reglas RF01-RF07 y señales de riesgo.
-Motor IA	Cumple	El README define el uso de DeepSeek V4 Flash / OpenCode Go como motor principal.	Otros documentos deben corregirse si mencionan Gemini como motor principal.
-Auditoría de facturas PDF	Cumple	El sistema contempla análisis de facturas PDF, incluyendo revisión documental.	Debe mantenerse como parte del sistema de fraude en siniestros, no como único alcance.
-Arquitectura documentada	Cumple	Existe documentación de arquitectura en la carpeta docs.	No debe marcarse como “no cumple”.
-4. Cumplimiento de reglas de negocio
-Regla / Señal	Estado	Evidencia de cumplimiento	Observación
-Validación de cobertura y ramo	Cumple	El sistema contempla revisión de coherencia entre siniestro, póliza, cobertura y factura.	Debe estar alineado con reglas_negocio.md.
-Validación de vigencia de póliza	Cumple	El sistema permite identificar alertas relacionadas con vigencia o fechas del siniestro.	Debe mantenerse como regla crítica.
-Validación de documentación mínima	Cumple	Se contempla revisión de documentos asociados al siniestro.	Aplica para soporte documental y consistencia del caso.
-Detección de facturas duplicadas	Cumple	El sistema detecta duplicidad o posibles facturas repetidas.	Debe mantenerse como señal clave de riesgo.
-Detección de sobrecostos	Cumple	El sistema identifica posibles valores superiores o incoherentes.	Debe describirse como alerta, no como conclusión definitiva.
-Detección de incoherencias	Cumple	El sistema identifica diferencias entre narrativa, documentos, póliza y factura.	Debe enfocarse como apoyo al analista.
-Clasificación por criticidad	Cumple	El sistema clasifica los casos mediante score y semáforo.	Verde, Amarillo y Rojo deben usarse de forma uniforme.
-5. Cumplimiento de criterios éticos y de gobernanza
-Criterio	Estado	Evidencia de cumplimiento	Observación
-Revisión humana obligatoria	Cumple	El sistema exige que un analista revise las alertas antes de cualquier decisión.	Punto obligatorio en todos los documentos.
-No acusación automática	Cumple	El sistema habla de “alertas” o “posible fraude”, no de fraude confirmado.	Evitar frases como “fraude detectado” o “culpable”.
-No decisión automática de pago/rechazo	Cumple	La solución no aprueba ni rechaza pagos automáticamente.	Las acciones finales corresponden al usuario humano autorizado.
-Explicabilidad de alertas	Cumple	El sistema presenta razones o señales que justifican el nivel de riesgo.	Debe mantenerse para sustentar el score.
-Uso responsable de IA	Cumple	La IA se utiliza como apoyo al análisis y no como autoridad final.	El analista conserva la decisión final.
-6. Correcciones aplicadas respecto a versiones anteriores
+## 2. Cumplimiento funcional
 
-Se actualiza la matriz de cumplimiento para alinearla con el README oficial del proyecto. En versiones anteriores se indicaba que ciertos componentes estaban pendientes o no existían; sin embargo, el README oficial establece que el sistema ya contempla dichos elementos.
+| Requerimiento                            | Estado | Evidencia de cumplimiento                                                                            | Observación                                                                              |
+| ---------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Auditoría de facturas de siniestros      | Cumple | El sistema permite cargar y auditar facturas PDF asociadas a siniestros.                             | La auditoría de facturas es un componente del sistema, no el alcance total del proyecto. |
+| Detección de posibles fraudes            | Cumple | El sistema aplica reglas y análisis asistido por IA para identificar señales de posible fraude.      | Debe usarse el término “posible fraude” o “alerta de riesgo”.                            |
+| Detección de sobrecobros                 | Cumple | El sistema analiza valores facturados e identifica posibles montos inusuales o inconsistentes.       | No debe presentarse como conclusión definitiva sin revisión humana.                      |
+| Detección de duplicados                  | Cumple | El sistema contempla la identificación de facturas o registros posiblemente duplicados.              | Apoya la prevención de pagos repetidos.                                                  |
+| Detección de incoherencias               | Cumple | El sistema revisa inconsistencias entre factura, siniestro, póliza, documentos y narrativa del caso. | Las incoherencias deben tratarse como señales de alerta.                                 |
+| Priorización de casos críticos           | Cumple | El sistema asigna un score de riesgo para ordenar los casos según criticidad.                        | Permite enfocar la revisión en los casos más relevantes.                                 |
+| Score de riesgo 0-100                    | Cumple | El README define un puntaje de riesgo entre 0 y 100.                                                 | El score es referencial y no reemplaza la decisión humana.                               |
+| Semáforo de riesgo                       | Cumple | El sistema clasifica los casos en Verde, Amarillo y Rojo.                                            | Los colores deben mantenerse consistentes en todos los documentos.                       |
+| Dashboard de visualización               | Cumple | El proyecto incluye un dashboard para visualizar casos, alertas y resultados.                        | Debe describirse como herramienta de apoyo a la auditoría.                               |
+| Chatbot de consulta                      | Cumple | El sistema incluye un chatbot para consultar información del sistema y de los casos.                 | Debe estar alineado con el motor IA oficial definido en el README.                       |
+| Revisión humana obligatoria              | Cumple | El sistema requiere intervención humana para validar cualquier alerta.                               | Es un punto central del proyecto.                                                        |
+| No acusación automática                  | Cumple | El sistema genera alertas, pero no acusa fraude directamente.                                        | Evitar expresiones como “fraude confirmado”.                                             |
+| No decisión automática de pago o rechazo | Cumple | El sistema no aprueba ni rechaza pagos automáticamente.                                              | La decisión final corresponde al analista humano.                                        |
 
-Correcciones principales:
+---
 
-Se cambia el estado de la arquitectura formal a Cumple, debido a que existe documentación de arquitectura dentro de la carpeta docs.
-Se actualiza el estado del modelo de datos a Cumple, considerando que el README describe una estructura normalizada con tablas para siniestros, pólizas, asegurados, vehículos, documentos, facturas e ítems.
-Se corrige la referencia al motor IA, dejando como oficial el uso de DeepSeek V4 Flash / OpenCode Go, según el README.
-Se actualiza el alcance del proyecto para que no sea descrito únicamente como auditor de facturas, sino como detector agéntico de fraude en siniestros.
-Se refuerza que el sistema no acusa fraude, no rechaza pagos y no toma decisiones automáticas.
-Se mantiene la auditoría de facturas PDF como un componente del sistema, pero no como el alcance completo del proyecto.
-Se corrige el estado de cumplimiento de las reglas de negocio y señales de alerta, alineándolas con el enfoque de score, semáforo y revisión humana.
-7. Observaciones finales
+## 3. Cumplimiento técnico
 
-La matriz actualizada refleja que el proyecto Miraclex cumple con los principales criterios funcionales, técnicos y éticos definidos en el README oficial.
+| Componente técnico                       | Estado | Evidencia de cumplimiento                                                                                             | Observación                                                    |
+| ---------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Backend FastAPI                          | Cumple | El README define FastAPI como backend principal del sistema.                                                          | Debe mantenerse igual en los documentos técnicos.              |
+| Frontend / Dashboard                     | Cumple | El sistema incluye interfaz visual para consultar casos, alertas y resultados.                                        | Debe describirse como dashboard operativo.                     |
+| Base de datos SQLite                     | Cumple | El proyecto contempla almacenamiento estructurado para la información del sistema.                                    | No debe indicarse como pendiente si el README ya lo reconoce.  |
+| Modelo de datos normalizado              | Cumple | El README menciona tablas normalizadas para siniestros, pólizas, asegurados, vehículos, documentos, facturas e ítems. | Debe alinearse con `modelo_datos.md`.                          |
+| Tabla de siniestros                      | Cumple | El sistema gestiona información de siniestros.                                                                        | Forma parte del núcleo funcional del proyecto.                 |
+| Tabla de pólizas                         | Cumple | El sistema contempla información de pólizas.                                                                          | No debe figurar como modelo inexistente.                       |
+| Tabla de asegurados sintéticos           | Cumple | El sistema utiliza información sintética de asegurados.                                                               | Refuerza el enfoque de privacidad y demostración.              |
+| Tabla de vehículos                       | Cumple | El sistema contempla información vehicular cuando aplica.                                                             | Debe mantenerse alineado con el modelo de datos.               |
+| Tabla de documentos                      | Cumple | El sistema considera documentos asociados al siniestro.                                                               | Sirve para validar soporte documental.                         |
+| Tabla de facturas                        | Cumple | El sistema registra y analiza facturas.                                                                               | Elemento central para la auditoría documental.                 |
+| Tabla de ítems de factura                | Cumple | El sistema analiza detalles o ítems facturados.                                                                       | Permite identificar sobrecostos o inconsistencias.             |
+| Motor de reglas determinísticas          | Cumple | El sistema aplica reglas para detectar señales de alerta.                                                             | Debe vincularse con reglas de negocio y señales de riesgo.     |
+| Motor IA DeepSeek V4 Flash / OpenCode Go | Cumple | El README define DeepSeek V4 Flash / OpenCode Go como motor principal.                                                | Corregir documentos que mencionen Gemini como motor principal. |
+| Auditoría de facturas PDF                | Cumple | El sistema permite analizar facturas PDF.                                                                             | Debe tratarse como parte del sistema de siniestros.            |
+| Arquitectura documentada                 | Cumple | Existe documentación de arquitectura dentro de la carpeta `docs`.                                                     | No debe marcarse como “no cumple”.                             |
 
-El sistema permite apoyar a una aseguradora en la revisión temprana de siniestros mediante reglas de negocio, análisis de facturas, señales de posible fraude, score de riesgo, semáforo de criticidad, dashboard y chatbot.
+---
 
-Toda alerta generada por el sistema debe interpretarse como una recomendación o señal de revisión, no como una acusación ni como una decisión automática. La decisión final corresponde siempre a un analista humano autorizado.
+## 4. Cumplimiento de reglas y señales de riesgo
 
-8. Estado general de cumplimiento
+| Regla / Señal                           | Estado | Evidencia de cumplimiento                                                                     | Observación                                                |
+| --------------------------------------- | ------ | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Validación de cobertura y ramo          | Cumple | El sistema revisa coherencia entre siniestro, póliza, cobertura y factura.                    | Debe mantenerse alineado con las reglas de negocio.        |
+| Validación de vigencia de póliza        | Cumple | El sistema identifica alertas relacionadas con fechas, vigencia o temporalidad del siniestro. | Es una señal crítica para revisión.                        |
+| Validación de documentación mínima      | Cumple | El sistema contempla revisión de documentos asociados al siniestro.                           | Permite detectar expedientes incompletos o inconsistentes. |
+| Validación de deducible                 | Cumple | El sistema puede contrastar valores aplicables al caso.                                       | Debe presentarse como apoyo al análisis.                   |
+| Validación de suma asegurada            | Cumple | El sistema permite identificar posibles excesos frente a montos asegurados.                   | Debe considerarse señal de alerta.                         |
+| Validación de proveedor o taller        | Cumple | El sistema contempla revisión del proveedor relacionado con la factura o siniestro.           | Aplica especialmente a facturas de reparación o servicios. |
+| Detección de facturas duplicadas        | Cumple | El sistema identifica posibles duplicidades documentales.                                     | Ayuda a evitar pagos repetidos.                            |
+| Detección de sobrecostos                | Cumple | El sistema detecta valores inusuales o superiores a lo esperado.                              | Debe tratarse como posible sobrecosto.                     |
+| Detección de incoherencias documentales | Cumple | El sistema analiza diferencias entre documentos, narrativa y factura.                         | Debe validarse por revisión humana.                        |
+| Clasificación por nivel de riesgo       | Cumple | El sistema utiliza score y semáforo para clasificar casos.                                    | Verde, Amarillo y Rojo deben ser uniformes.                |
+| Generación de alertas explicables       | Cumple | El sistema presenta motivos o señales asociadas al riesgo.                                    | Refuerza la transparencia del análisis.                    |
+| Priorización de casos para auditoría    | Cumple | Los casos con mayor riesgo pueden ser revisados primero.                                      | Mejora la eficiencia del proceso de auditoría.             |
 
-Resultado general: Cumple.
+---
 
-Justificación:
-El proyecto implementa una solución integral para apoyar la detección temprana de posibles fraudes en siniestros, combinando reglas determinísticas, análisis asistido por IA, priorización de casos, visualización en dashboard, chatbot de consulta y revisión humana obligatoria.
+## 5. Cumplimiento ético y de gobernanza
 
-La matriz queda alineada con el README oficial y corrige inconsistencias presentes en versiones anteriores de la documentación.
+| Criterio ético              | Estado | Evidencia de cumplimiento                                                   | Observación                                                         |
+| --------------------------- | ------ | --------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Uso de lenguaje responsable | Cumple | El sistema debe referirse a “alertas”, “riesgo” o “posible fraude”.         | Evitar lenguaje acusatorio.                                         |
+| No acusación de fraude      | Cumple | El README establece que el sistema no acusa directamente.                   | El fraude solo puede confirmarse mediante revisión correspondiente. |
+| No decisión automática      | Cumple | El sistema no decide pagos, rechazos ni sanciones.                          | Solo apoya la revisión.                                             |
+| Revisión humana obligatoria | Cumple | Toda alerta requiere análisis de un usuario autorizado.                     | Debe mantenerse en todos los documentos.                            |
+| Explicabilidad              | Cumple | Las alertas deben estar acompañadas de razones o señales.                   | Permite que el analista entienda el resultado.                      |
+| Uso responsable de IA       | Cumple | La IA funciona como apoyo al análisis, no como autoridad final.             | El analista mantiene la responsabilidad de la decisión.             |
+| Uso de datos sintéticos     | Cumple | El proyecto trabaja con información sintética para efectos de demostración. | Reduce riesgos de privacidad.                                       |
+| Trazabilidad de alertas     | Cumple | El sistema permite consultar casos, resultados y señales generadas.         | Fortalece auditoría y control.                                      |
+
+---
+
+## 6. Correcciones frente a la versión anterior de la matriz
+
+| Punto corregido      | Estado anterior             | Estado actualizado                                | Justificación                                                                                                         |
+| -------------------- | --------------------------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Arquitectura formal  | No cumple / pendiente       | Cumple                                            | El repositorio sí cuenta con documentación de arquitectura dentro de `docs`.                                          |
+| Modelo de datos      | No cumple / pendiente       | Cumple                                            | El README reconoce tablas normalizadas para siniestros, pólizas, asegurados, vehículos, documentos, facturas e ítems. |
+| Modelo de póliza     | No existe                   | Cumple                                            | El README contempla pólizas dentro del modelo de datos.                                                               |
+| Modelo de asegurado  | No existe                   | Cumple                                            | El README contempla asegurados sintéticos.                                                                            |
+| Modelo de documentos | No existe                   | Cumple                                            | El README contempla documentos asociados al siniestro.                                                                |
+| Alcance del sistema  | Auditor de facturas         | Detector agéntico de posible fraude en siniestros | El README oficial define un alcance más amplio.                                                                       |
+| Motor IA             | Gemini / ambiguo            | DeepSeek V4 Flash / OpenCode Go                   | El README define este motor como referencia principal.                                                                |
+| Chatbot              | Pendiente o fase futura     | Cumple                                            | El README incluye chatbot como parte del sistema.                                                                     |
+| Dashboard            | Pendiente o fase futura     | Cumple                                            | El README incluye dashboard para visualización y priorización.                                                        |
+| Reglas de negocio    | Pendientes o incompletas    | Cumple                                            | El README contempla reglas determinísticas y señales de riesgo.                                                       |
+| Score de riesgo      | Pendiente o parcial         | Cumple                                            | El README define score 0-100.                                                                                         |
+| Semáforo de riesgo   | Pendiente o parcial         | Cumple                                            | El README define clasificación Verde, Amarillo y Rojo.                                                                |
+| Decisión automática  | No aclarado                 | Corregido                                         | Se deja claro que el sistema no aprueba ni rechaza automáticamente.                                                   |
+| Lenguaje de fraude   | Riesgo de acusación directa | Corregido                                         | Se usa “posible fraude”, “alerta” o “riesgo”.                                                                         |
+
+---
+
+## 7. Documentos que deben quedar alineados con esta matriz
+
+| Documento                            | Estado esperado       | Acción recomendada                                                          |
+| ------------------------------------ | --------------------- | --------------------------------------------------------------------------- |
+| `README.md`                          | Fuente oficial        | Mantener como documento principal de referencia.                            |
+| `MATRIZ_CUMPLIMIENTO_RETO.md`        | Debe actualizarse     | Reemplazar la versión anterior por esta matriz actualizada.                 |
+| `modelo_datos.md`                    | Alineado parcialmente | Verificar que use los mismos nombres de tablas y alcance del README.        |
+| `reglas_negocio.md`                  | Alineado parcialmente | Confirmar que las reglas RF01-RF07 coincidan con lo oficial.                |
+| `arquitectura.md`                    | Alineado parcialmente | Mantener la arquitectura como evidencia de cumplimiento.                    |
+| `stack.md`                           | Requiere ajuste       | Corregir puertos, motor IA y descripción del backend/frontend según README. |
+| `uso_ia.md`                          | Requiere ajuste       | Dejar DeepSeek V4 Flash / OpenCode Go como motor principal.                 |
+| `MANUAL_USO.md`                      | Requiere ajuste       | Cambiar enfoque de auditor de facturas a detector de fraude en siniestros.  |
+| `DOC_FUNCIONES.md`                   | Requiere ajuste       | Unificar el motor IA y el alcance funcional con el README.                  |
+| `PLAN_SOFISTICADO_IMPLEMENTACION.md` | Requiere ajuste       | Marcar como histórico o actualizarlo como plan de evolución futura.         |
+| `DEEPSEEK_REVIEW_LOOP.md`            | Requiere ajuste       | Actualizar las fases pendientes según el estado actual del README.          |
+
+---
+
+## 8. Conclusión de cumplimiento
+
+| Resultado                      | Estado                                                                         |
+| ------------------------------ | ------------------------------------------------------------------------------ |
+| Estado general de cumplimiento | Cumple                                                                         |
+| Fuente oficial utilizada       | README.md                                                                      |
+| Nivel de alineación funcional  | Alto                                                                           |
+| Nivel de alineación técnica    | Alto                                                                           |
+| Nivel de alineación ética      | Alto                                                                           |
+| Riesgo principal identificado  | Documentos secundarios desactualizados o contradictorios                       |
+| Acción principal recomendada   | Actualizar la matriz y documentos secundarios para que coincidan con el README |
+
+---
+
+## 9. Conclusión final
+
+La matriz actualizada refleja que el proyecto **Miraclex — Detector Agéntico de Fraude en Siniestros** cumple con los principales criterios funcionales, técnicos y éticos definidos en el README oficial.
+
+El sistema permite apoyar a una aseguradora en la revisión temprana de siniestros mediante reglas determinísticas, análisis asistido por IA, auditoría de facturas PDF, score de riesgo, semáforo de criticidad, dashboard, chatbot y revisión humana obligatoria.
+
+Toda alerta generada por el sistema debe interpretarse como una señal de revisión o posible riesgo, no como una acusación ni como una decisión automática. La decisión final corresponde siempre a un analista humano autorizado.
+
