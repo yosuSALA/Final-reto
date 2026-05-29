@@ -116,25 +116,7 @@ Estado: listo para demo funcional
 
 ---
 
-## 7. Documentos que deben quedar alineados con esta matriz
-
-| Documento                            | Estado esperado       | Acción recomendada                                                          |
-| ------------------------------------ | --------------------- | --------------------------------------------------------------------------- |
-| `README.md`                          | Fuente oficial        | Mantener como documento principal de referencia.                            |
-| `MATRIZ_CUMPLIMIENTO_RETO.md`        | Debe actualizarse     | Reemplazar la versión anterior por esta matriz actualizada.                 |
-| `modelo_datos.md`                    | Alineado parcialmente | Verificar que use los mismos nombres de tablas y alcance del README.        |
-| `reglas_negocio.md`                  | Alineado parcialmente | Confirmar que las reglas RF01-RF07 coincidan con lo oficial.                |
-| `arquitectura.md`                    | Alineado parcialmente | Mantener la arquitectura como evidencia de cumplimiento.                    |
-| `stack.md`                           | Requiere ajuste       | Corregir puertos, motor IA y descripción del backend/frontend según README. |
-| `uso_ia.md`                          | Requiere ajuste       | Dejar DeepSeek V4 Flash / OpenCode Go como motor principal.                 |
-| `MANUAL_USO.md`                      | Requiere ajuste       | Cambiar enfoque de auditor de facturas a detector de fraude en siniestros.  |
-| `DOC_FUNCIONES.md`                   | Requiere ajuste       | Unificar el motor IA y el alcance funcional con el README.                  |
-| `PLAN_SOFISTICADO_IMPLEMENTACION.md` | Requiere ajuste       | Marcar como histórico o actualizarlo como plan de evolución futura.         |
-| `DEEPSEEK_REVIEW_LOOP.md`            | Requiere ajuste       | Actualizar las fases pendientes según el estado actual del README.          |
-
----
-
-## 8. Conclusión de cumplimiento
+## 7. Conclusión de cumplimiento
 
 | Resultado                      | Estado                                                                         |
 | ------------------------------ | ------------------------------------------------------------------------------ |
@@ -143,14 +125,12 @@ Estado: listo para demo funcional
 | Nivel de alineación funcional  | Alto                                                                           |
 | Nivel de alineación técnica    | Alto                                                                           |
 | Nivel de alineación ética      | Alto                                                                           |
-| Riesgo principal identificado  | Documentos secundarios desactualizados o contradictorios                       |
-| Acción principal recomendada   | Actualizar la matriz y documentos secundarios para que coincidan con el README |
 
 ---
 
 ## 9. Conclusión final
 
-La matriz actualizada refleja que el proyecto **Miraclex — Detector Agéntico de Fraude en Siniestros** cumple con los principales criterios funcionales, técnicos y éticos definidos en el README oficial.
+La matriz refleja que el proyecto **Miraclex — Detector Agéntico de Fraude en Siniestros** cumple con los principales criterios funcionales, técnicos y éticos definidos en el README oficial.
 
 El sistema permite apoyar a una aseguradora en la revisión temprana de siniestros mediante reglas determinísticas, análisis asistido por IA, auditoría de facturas PDF, score de riesgo, semáforo de criticidad, dashboard, chatbot y revisión humana obligatoria.
 
