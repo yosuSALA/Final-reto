@@ -2,7 +2,7 @@
 
 Proyecto: Detector de Posibles Fraudes en Siniestros usando IA  
 Repositorio: `Final-reto`  
-Fecha: 27 / 05 / 2026  
+Fecha: 29 / 05 / 2026  
 Revisor: DeepSeek v4 Flash (OpenCode Go) — Auditoría Estricta
 
 ---
