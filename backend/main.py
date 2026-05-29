@@ -170,9 +170,18 @@ def _record_audit_event(
         db.close()
 
 
+class NoCacheStaticFiles(StaticFiles):
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
+
+
 frontend_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
 if os.path.exists(frontend_path):
-    app.mount("/app", StaticFiles(directory=frontend_path, html=True), name="frontend")
+    app.mount("/app", NoCacheStaticFiles(directory=frontend_path, html=True), name="frontend")
 
 logo_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logo")
 if os.path.exists(logo_path):
