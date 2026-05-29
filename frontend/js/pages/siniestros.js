@@ -11,6 +11,15 @@ export async function loadSiniestros() {
     state.claimsData = await apiFetch("/claims") || [];
     renderSiniestrosView();
     window._siniestrosLoaded = true;
+    // Si un siniestro viene pre-expandido (p.ej. desde el flujo del Panel),
+    // su fila muestra el spinner pero nadie dispara el fetch de facturas:
+    // solo toggleClaimPreview lo hace. Hidratamos el caché aquí.
+    const preOpenedId = state.claimExpanded;
+    if (preOpenedId != null && state.claimInvoicesCache[preOpenedId] === undefined) {
+        const invs = await apiFetch(`/claims/${preOpenedId}/invoices`);
+        state.claimInvoicesCache[preOpenedId] = invs || [];
+        if (state.claimExpanded === preOpenedId) renderSiniestrosView();
+    }
 }
 
 // Recarga la lista cuando se completa una importación CSV exitosa
