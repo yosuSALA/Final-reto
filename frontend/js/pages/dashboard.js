@@ -1128,7 +1128,7 @@ async function renderActionFlowPanel(page, perms, options = {}) {
 
 function renderDemoVerificationFlow() {
     const steps = [
-        ["1", "Generar PDFs", "En Carga, el juez puede generar declaración, parte policial y factura por separado, o crear un expediente automático."],
+        ["1", "Generar PDFs", "En Carga, el tester puede generar declaración, parte policial y factura por separado, o crear un expediente automático."],
         ["2", "Cargar documentos", "El selector de siniestro es opcional: si el PDF trae referencia SIN-..., el sistema detecta o crea el expediente."],
         ["3", "Orden del expediente", "Declaración, parte policial y factura quedan asociados al mismo siniestro para revisar trazabilidad."],
         ["4", "Auditar con IA", "DeepSeek es el motor principal. Las reglas quedan como respaldo técnico o acción manual si la API no responde."],
