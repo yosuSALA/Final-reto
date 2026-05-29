@@ -40,7 +40,7 @@ export function navigateTo(page, params = {}) {
 }
 
 export function routeFromHash() {
-    const isDashboardRole = ["jefatura", "demo_jurado", "legal", "admin"].includes(state.currentRole);
+    const isDashboardRole = ["jefatura", "demo_jurado", "legal", "admin", "analista", "antifraude", "auditoria"].includes(state.currentRole);
     const defaultPage = state.currentRole === "admin" ? "admin-audit"
                        : isDashboardRole ? "dashboard" : "audit-panel";
     let hash = location.hash.replace("#", "") || defaultPage;

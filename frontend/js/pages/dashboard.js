@@ -22,10 +22,10 @@ export async function loadDashboard() {
                     await renderActionFlowPanel(page, perms);
                 }
                 break;
-            case "analista":     await renderActionFlowPanel(page, perms); break;
-            case "antifraude":   await renderActionFlowPanel(page, perms); break;
+            case "analista":     await renderAnalista(page, perms); break;
+            case "antifraude":   await renderAntifraude(page, perms); break;
             case "jefatura":     await renderJefatura(page, perms); break;
-            case "auditoria":    await renderActionFlowPanel(page, perms); break;
+            case "auditoria":    await renderAuditoria(page, perms); break;
             case "operaciones":  await renderActionFlowPanel(page, perms); break;
             case "costos":       await renderActionFlowPanel(page, perms); break;
             case "contabilidad": await renderActionFlowPanel(page, perms); break;

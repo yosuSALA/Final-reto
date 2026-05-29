@@ -506,7 +506,7 @@ export function updateProfileBadge() {
     }
 
     const role = state.currentRole;
-    const isDashboardRole = ["jefatura", "demo_jurado", "legal", "admin"].includes(role);
+    const isDashboardRole = ["jefatura", "demo_jurado", "legal", "admin", "analista", "antifraude", "auditoria"].includes(role);
     const homeLink = document.getElementById("nav-dashboard");
     const homeLabel = document.getElementById("nav-home-label");
     const auditPanelLink = document.getElementById("nav-audit-panel");
@@ -516,7 +516,7 @@ export function updateProfileBadge() {
         homeLabel.textContent = isDashboardRole ? "Dashboard" : "Flujo";
     }
     if (auditPanelLink) {
-        auditPanelLink.style.display = isDashboardRole ? "flex" : "none";
+        auditPanelLink.style.display = (isDashboardRole && role !== "legal") ? "flex" : "none";
         const textNode = Array.from(auditPanelLink.childNodes).find((node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim());
         if (textNode) textNode.textContent = " Flujo";
     }
