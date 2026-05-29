@@ -54,16 +54,16 @@ En la vista detalle (`#audit/{id}`):
 
 Calibración: `exceso ≤ tolerancia → INFO`, `tolerancia < exceso ≤ 30% → WARNING`, `exceso > 30% → CRITICAL`.
 
-### 5. Motor IA Gemini (opcional)
+### 5. Motor IA Deepseek (opcional)
 
-`backend/gemini_auditor.py` aplica patrones SOTA:
+`backend/opencodego_auditor.py` aplica patrones SOTA:
 
 - Chain-of-Thought forzado por orden de campos en schema JSON.
 - Few-shot calibration con 2 ejemplos (limpio + fraude).
 - Citación de evidencia literal del input para cada hallazgo.
 - Confianza calibrada 0.0-1.0; CRITICAL requiere ≥ 0.7.
 - Validación semántica + retry con feedback.
-- Mock mode si falta `GOOGLE_API_KEY` (devuelve respuesta de prueba).
+- Mock mode si falta `OPENCODE_GO_API_KEY` (devuelve respuesta de prueba).
 
 ### 6. Tarifario Maestro con Tarifarios Manuales
 
@@ -79,7 +79,7 @@ Permite ver un siniestro y todas las facturas asociadas a ese mismo caso, facili
 ### 8. Generación y Previsualización de Reportes (PDF)
 
 - **Reporte Interno**: PDF detallado para el auditor humano. Incluye Risk Score, severidad por hallazgo y items con flag ⚠ sobre tarifario.
-- **Notificación al Taller**: PDF profesional sin Risk Score, con la lista de ajustes requeridos y un mensaje ejecutivo. Usa **plantillas predeterminadas**: si la auditoría no tiene `resumen_ejecutivo_taller`, se usa un texto fijo. Esto evita depender de Gemini para el texto narrativo y mantiene los reportes consistentes y rápidos.
+- **Notificación al Taller**: PDF profesional sin Risk Score, con la lista de ajustes requeridos y un mensaje ejecutivo. Usa **plantillas predeterminadas**: si la auditoría no tiene `resumen_ejecutivo_taller`, se usa un texto fijo. Esto evita depender de Deepseek para el texto narrativo y mantiene los reportes consistentes y rápidos.
 
 ### 9. Ingreso de Nuevas Facturas (Drag & Drop) con Flag TEST
 
@@ -108,7 +108,7 @@ Cada card del generador tiene **Descargar PDF** y **Auditar directo** (lo inyect
 
 La aplicación queda disponible en `http://localhost:8000/app/`.
 
-Si no configuras `GOOGLE_API_KEY` en `.env`, el motor IA entra en **modo mock** y el motor de reglas funciona sin cambios. El sistema es completamente usable sin Gemini.
+Si no configuras `OPENCODE_GO_API_KEY` en `.env`, el motor IA entra en **modo mock** y el motor de reglas funciona sin cambios. El sistema es completamente usable sin Deepseek.
 
 ---
 
@@ -117,7 +117,7 @@ Si no configuras `GOOGLE_API_KEY` en `.env`, el motor IA entra en **modo mock** 
 El sistema asegura que ninguna re-auditoría genere registros duplicados, en tres niveles:
 
 1. **DB**: `UniqueConstraint(invoice_number, workshop_id)` en `invoices` impide insertar la misma factura dos veces.
-2. **Backend**: tanto `agent.audit_invoice` (reglas) como `_save_ai_result` (Gemini) hacen **upsert** — si ya existe un `AuditResult` para el invoice, lo actualizan en vez de crear uno nuevo, y borran los hallazgos antiguos antes de insertar los nuevos.
+2. **Backend**: tanto `agent.audit_invoice` (reglas) como `_save_ai_result` (Deepseek) hacen **upsert** — si ya existe un `AuditResult` para el invoice, lo actualizan en vez de crear uno nuevo, y borran los hallazgos antiguos antes de insertar los nuevos.
 3. **Frontend**: flag `uploadInFlight` en `upload.js` bloquea cargas concurrentes; el componente de drag-drop solo dispara el upload una vez por archivo.
 
-El campo `audit_engine` en cada `AuditResult` siempre refleja el último motor empleado. Si auditas con reglas y luego con IA, verás un único registro con `audit_engine="gemini"` y los hallazgos de Gemini (los de reglas se reemplazaron). Si vuelves a auditar con reglas, se sobrescribe nuevamente. Sin duplicación, sin estado intermedio.
+El campo `audit_engine` en cada `AuditResult` siempre refleja el último motor empleado. Si auditas con reglas y luego con IA, verás un único registro con `audit_engine="deepseek"` y los hallazgos de Deepseek (los de reglas se reemplazaron). Si vuelves a auditar con reglas, se sobrescribe nuevamente. Sin duplicación, sin estado intermedio.
