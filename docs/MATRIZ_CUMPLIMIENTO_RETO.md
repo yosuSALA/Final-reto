@@ -121,14 +121,13 @@ Estado: listo para demo funcional
 | Resultado                      | Estado                                                                         |
 | ------------------------------ | ------------------------------------------------------------------------------ |
 | Estado general de cumplimiento | Cumple                                                                         |
-| Fuente oficial utilizada       | README.md                                                                      |
 | Nivel de alineación funcional  | Alto                                                                           |
 | Nivel de alineación técnica    | Alto                                                                           |
 | Nivel de alineación ética      | Alto                                                                           |
 
 ---
 
-## 9. Conclusión final
+## 8. Conclusión final
 
 La matriz refleja que el proyecto **Miraclex — Detector Agéntico de Fraude en Siniestros** cumple con los principales criterios funcionales, técnicos y éticos definidos en el README oficial.
 
