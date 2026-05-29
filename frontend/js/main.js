@@ -27,6 +27,7 @@ import {
 import {
     loadUploadPage, genRandomFactura, clearGeneratedFacturas,
     setUploadIsTest, setUploadDocType, handleUploadFile, auditTestPdfDirect,
+    generateCompleteDemoCase, generateDemoDocuments,
 } from "./pages/upload.js";
 import {
     loadPendingDetail, triggerJitAudit, triggerRulesAudit,
@@ -83,7 +84,7 @@ Object.assign(window, {
     setClaimsSearch, setClaimsTypeFilter, setClaimsStatusFilter, setClaimsSort, clearClaimsWorkflowFocus,
     toggleClaimForm, submitNewClaim, handleWizardUpload,
     genRandomFactura, clearGeneratedFacturas, setUploadIsTest, setUploadDocType,
-    handleUploadFile, auditTestPdfDirect,
+    handleUploadFile, auditTestPdfDirect, generateCompleteDemoCase, generateDemoDocuments,
     triggerJitAudit, triggerRulesAudit,
     auditAction, previewReport, reAuditWith,
     toggleTheme, signOut, toggleAuditQueueMinimized,

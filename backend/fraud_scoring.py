@@ -120,7 +120,7 @@ def evaluate_fraud_scoring(siniestro: Siniestro, db: Session):
 
     # --- LAS 14 SEÑALES DE FRAUDE ---
     pts = 0
-    max_pts = 98
+    max_pts = 50
 
     # 1. Reclamo cercano a borde de vigencia (hasta 8 pts)
     # Si ocurre en los primeros 15 días o últimos 15 días de vigencia de la póliza
@@ -271,17 +271,17 @@ def evaluate_fraud_scoring(siniestro: Siniestro, db: Session):
         })
         pts += 4
 
-    # 9. Dinámica sospechosa (hasta 6 pts)
+    # 9. Dinámica sospechosa (hasta 10 pts)
     # Siniestros sin testigos, de madrugada, o relatos vagos
     desc_lower = (siniestro.descripcion or "").lower()
     if any(k in desc_lower for k in ["madrugada", "sin testigos", "vía solitaria", "lugar despoblado", "no recuerda", "3 am", "2 am", "1 am", "4 am"]):
         indicators.append({
             "code": "S09",
             "name": "Dinámica Sospechosa",
-            "points": 6,
+            "points": 10,
             "detail": "El relato del siniestro indica ocurrencia en horario nocturno tardío, sin testigos y con dinámica inusual."
         })
-        pts += 6
+        pts += 10
 
     # 10. Eventos sin tercero (hasta 6 pts)
     # Daños contra objeto fijo, postes, autovolcamientos
@@ -348,7 +348,7 @@ def evaluate_fraud_scoring(siniestro: Siniestro, db: Session):
             oc_desc = (oc.descripcion or "")
             if oc_desc and len(oc_desc) > 20:
                 sim = get_similarity(siniestro.descripcion, oc_desc)
-                if sim >= 0.75:
+                if sim >= 0.90:
                     similar_found = True
                     similar_id = oc.id_siniestro
                     break

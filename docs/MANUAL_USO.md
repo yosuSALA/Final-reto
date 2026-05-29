@@ -1,180 +1,223 @@
-# Manual de Uso — Auditor Agéntico de Facturación
+# Manual de Uso — Miraclex
 
-> Guía paso a paso para usuarios del sistema (auditores, supervisores y demo).
-> Para detalles técnicos ver [`README.md`](../README.md). Para descripción de funciones internas ver [`DOC_FUNCIONES.md`](DOC_FUNCIONES.md).
+Guía práctica para ejecutar la demo final y operar el expediente de siniestros.
 
----
+## 1. Qué Hace la Aplicación
 
-## 1. ¿Qué hace la aplicación?
+Miraclex permite:
 
-Plataforma agéntica que audita facturas de talleres mecánicos enviadas a la aseguradora. El sistema:
+- Crear y consultar siniestros.
+- Generar PDFs sintéticos para demo.
+- Cargar declaración, parte policial y factura.
+- Detectar automáticamente el siniestro desde referencias `SIN-...` dentro del PDF.
+- Auditar facturas con DeepSeek V4 Flash como motor principal.
+- Usar reglas locales como fallback técnico o revisión manual.
+- Revisar hallazgos, score, reportes y estado del expediente.
+- Tomar decisiones humanas: aprobar, rechazar, escalar o derivar a Legal.
+- Consultar datos con el chatbot inteligente.
+- Analizar métricas con la plataforma de inteligencia operativa.
+- Administrar perfiles, contraseñas y revisar el log de auditoría.
 
-1. **Recibe** la factura en PDF (drag-drop o generador de prueba).
-2. **Extrae** los ítems automáticamente.
-3. **Audita** cruzando contra el siniestro declarado y el tarifario maestro.
-4. **Genera** un reporte interno (con riesgo) y una notificación formal al taller.
+## 2. Arranque
 
-Existen dos motores intercambiables sobre la misma factura:
+Windows:
 
-- ⚡ **Reglas** — rápido (~1-2 s), determinístico.
-- 🤖 **IA Gemini** — más lento (~15-30 s), añade razonamiento textual.
-
-Re-auditar **reemplaza** el resultado existente. Nunca se duplican registros.
-
----
-
-## 2. Cómo arrancar
-
-### Opción A — Inicio rápido
-
-- **Windows:** doble-click en `start.bat`.
-- **Mac/Linux:** `bash start.sh`.
-
-### Opción B — Manual
-
-```bash
-pip install -r backend/requirements.txt
-python -m uvicorn backend.main:app --reload --port 8000
+```bat
+start.bat
 ```
 
-Luego abrir en navegador:
+macOS/Linux:
 
-- Landing: <http://localhost:8000/>
-- Aplicación: <http://localhost:8000/app/>
+```bash
+./start.sh
+```
 
-> **API Key Gemini (opcional):** crear `.env` en la raíz con `GOOGLE_API_KEY=tu_key`. Sin esta clave el motor IA corre en modo prueba (mock). El motor de reglas funciona siempre.
+Alternativa con npm:
 
----
+```bash
+npm start
+```
 
-## 3. Recorrido por la aplicación
+Abrir:
 
-### 3.1 Dashboard (`#dashboard`)
+- `http://localhost:8000/`
+- `http://localhost:8000/app/`
+- `http://localhost:8000/docs`
 
-Pantalla de inicio. Muestra:
+## 3. Demo Automática con IA
 
-- KPIs: facturas auditadas, monto total, sobrecobro detectado, ahorro estimado.
-- Scatter de siniestros por día.
-- Donut de hallazgos por severidad.
-- Toggle **Incluir TEST** — por defecto oculta facturas de prueba.
+Esta es la ruta más rápida para jurado.
 
-### 3.2 Subir Factura (`#upload`)
+1. Abrir la app en `http://localhost:8000/app/`.
+2. Seleccionar perfil `Demo / Jurado` o un perfil con permisos.
+3. Ir a `Carga`.
+4. En `Qué generar`, elegir `Expediente automático con IA`.
+5. En `Nivel de riesgo de factura`, elegir `Aleatorio`, `Limpio`, `Sobrecobro` o `Fraude`.
+6. Pulsar `Generar`.
+7. Esperar a que el sistema cree siniestro, declaración, parte policial, factura y auditoría.
+8. Revisar el detalle de auditoría que se abre al finalizar.
 
-Dos paneles + un checkbox:
+Si DeepSeek V4 Flash no responde, el backend usa reglas como fallback y lo muestra en pantalla.
 
-1. **Drag-drop (panel izquierdo):**
-   - (Opcional) Asocia un siniestro del listado.
-   - Marca/desmarca **TEST** según corresponda.
-   - Arrastra el PDF o haz click para elegir.
-   - El sistema lo extrae y queda **pendiente** de auditoría.
+## 4. Demo Manual Paso a Paso
 
-2. **Generador random (panel derecho):**
-   - Genera facturas con formato SRI Ecuador (RUC, clave acceso 49 dígitos, módulo 11).
-   - Botones: `+ Limpia`, `+ Sobrecobro`, `+ Fraude`, `+ Aleatorio`.
-   - Cada card permite **Descargar PDF** o **Auditar directo** (lo inyecta al drag-drop con TEST=on).
+Esta ruta permite mostrar trazabilidad documental.
 
-> **Restricciones:** solo `.pdf`, máximo 10 MB.
+1. Ir a `Carga`.
+2. Elegir `Expediente manual completo (3 PDFs)`.
+3. Elegir nivel de riesgo.
+4. Pulsar `Generar`.
+5. Descargar los tres PDFs generados.
+6. En `Tipo de documento`, seleccionar `Declaración` y cargar la declaración.
+7. Seleccionar `Parte Policial` y cargar el parte.
+8. Seleccionar `Factura` y cargar la factura.
+9. Mantener `Siniestro destino` en `Detectar automáticamente desde el PDF` para probar la resolución automática.
+10. Ir a `Auditorías` y ejecutar/revisar la auditoría IA.
 
-### 3.3 Auditorías (`#auditorias`)
+Orden recomendado: declaración → parte policial → factura → auditoría.
 
-Dos pestañas:
+## 5. Carga de Documentos
 
-- **Pendientes** — facturas sin auditar. Botón **Auditar ahora** abre selector de motor.
-- **Revisadas** — historial con badge del motor (⚡ REGLAS / 🤖 IA), risk score, estado.
+El selector `Siniestro destino` es opcional.
 
-Filtros disponibles: búsqueda por número o taller, toggle TEST.
+- Si el PDF trae una referencia `SIN-...`, el backend busca el expediente.
+- Si no existe, puede crear un siniestro mínimo con los datos extraídos.
+- Si no puede identificarlo, devuelve un mensaje pidiendo selección manual.
 
-### 3.4 Detalle de auditoría (`#audit/{id}`)
+Endpoints usados por la UI:
 
-Pantalla central del auditor. Contiene:
+- Declaración automática: `POST /api/claims/auto/declaration`
+- Parte automático: `POST /api/claims/auto/police-report`
+- Factura: `POST /api/audit-pdf`
 
-- Header con risk score y badge del motor usado.
-- Lista de hallazgos con severidad (CRÍTICO / WARNING / INFO).
-- Tabla de ítems con flags ⚠ en filas con problema.
-- Botones de acción:
-  - **Re-auditar Reglas** / **Re-auditar IA** — reemplaza el resultado.
-  - **Aprobar** / **Rechazar** / **Escalar** — decisión humana.
-  - **Reporte Interno** — PDF con risk score y análisis completo.
-  - **Notificación Taller** — PDF profesional, sin risk score, con el mensaje formal del Departamento de Auditoría Técnica de Siniestros.
+## 6. Auditoría
 
-### 3.5 Tarifario (`#tarifario`)
+Motor principal:
 
-Catálogo maestro contra el que se auditan los ítems.
+- DeepSeek V4 Flash vía OpenCode Go.
 
-- Categorías colapsables (repuesto, pintura, material, mano de obra, servicio).
-- Botón **+ Añadir Tarifario Manual** — abre form con: código, descripción, categoría, precio máx, tolerancia %, cantidades min/max, checkboxes de siniestros aplicables.
-- **Eliminar** por fila.
+Motores secundarios:
 
-### 3.6 Siniestros (`#siniestros`)
+- DeepSeek API directa si está configurada.
+- Reglas locales si DeepSeek falla o si el usuario las ejecuta manualmente.
 
-Tabla expandible. Cada fila despliega las facturas asociadas al siniestro.
+La auditoría muestra hallazgos, severidad, monto observado, recomendación y reportes PDF.
 
----
+Opciones de auditoría:
 
-## 4. Flujo recomendado para la demo
+- **Individual con IA**: audita una factura con DeepSeek V4 Flash.
+- **Masiva con IA**: audita todas las facturas pendientes con concurrencia.
+- **Individual con reglas**: audita con motor de reglas (manual/fallback).
+- **Masiva con agente**: audita todas con motor principal + fallback.
 
-1. Abrir landing → click **Lanzar Aplicación Web**.
-2. Ir a `#upload` → panel derecho → click **+ Fraude** → click **Auditar directo**.
-3. La factura aparece en `#auditorias` (pestaña Pendientes) → **Auditar ahora** → elegir motor.
-4. Abrir `#audit/{id}` → mostrar hallazgos + Risk Score.
-5. Click **Notificación Taller** → mostrar PDF con mensaje formal del Departamento de Auditoría Técnica de Siniestros.
-6. Click **Re-auditar IA** → mostrar el cambio de motor sin duplicación.
-7. Volver a `#dashboard` → activar toggle TEST para ver el impacto.
+## 7. Flujo de Decisión Humana
 
----
+Desde el detalle de auditoría, según el rol del perfil:
 
-## 5. Reportes generados
+1. **Costos / Contabilidad** pueden:
+   - **Aprobar**: aprueba un siniestro no escalado.
+   - **Escalar**: escala a Jefatura para revisión.
 
-| Reporte               | Audiencia | Contenido                                                    |
-|-----------------------|-----------|--------------------------------------------------------------|
-| Reporte Interno       | Auditor   | Risk score, severidad por hallazgo, ítems con flags          |
-| Notificación Taller   | Taller    | Profesional, sin risk score, ajustes requeridos, mensaje formal del Departamento de Auditoría Técnica de Siniestros |
+2. **Jefatura** puede:
+   - **Aprobar** (final): aprueba un siniestro previamente escalado.
+   - **Rechazar**: rechaza un siniestro escalado.
+   - **Derivar a Legal**: envía a Legal un siniestro escalado.
 
-Ambos se generan con `reportlab` desde `backend/pdf_generator.py` y se sirven inline en el navegador. Los PDFs persistidos quedan en `backend/generated_reports/`.
+3. **Legal** puede:
+   - Consultar siniestros derivados en la sección de notificaciones.
 
----
+## 8. Workspace del Siniestro
 
-## 6. Modo prueba (TEST)
+Vista centralizada accesible desde la lista de siniestros. Incluye:
 
-Para no contaminar las métricas reales con datos de demo:
+- Resumen ejecutivo.
+- Timeline del expediente con todas las acciones.
+- Score de fraude con desglose de señales.
+- Documentos: declaración, parte policial, facturas.
+- Datos de póliza, cliente y vehículo.
 
-- El generador random marca por defecto las facturas como **TEST**.
-- Las facturas TEST entran a la DB y se auditan con el flujo normal.
-- El dashboard real las **oculta** por defecto. Toggle **Incluir TEST** las muestra.
-- Visible con badge gris **TEST** en listas y detalle.
+## 9. Chatbot Inteligente
 
----
+Burbuja flotante en la esquina inferior derecha.
 
-## 7. Preguntas frecuentes
+- Permite hacer preguntas en lenguaje natural sobre datos del sistema.
+- El chatbot usa DeepSeek V4 Flash para reescribir las respuestas.
+- Las respuestas están filtradas según el perfil/rol del usuario.
+- Incluye preguntas guiadas y pregunta libre.
 
-**¿Necesito API Key para la demo?**
-No. El motor de reglas no la requiere. Sin `GOOGLE_API_KEY`, el motor IA usa modo prueba (mock) y devuelve respuestas simuladas.
+## 10. Perfiles
 
-**¿Puedo re-auditar la misma factura varias veces?**
-Sí. Cada re-auditoría reemplaza el resultado anterior. El badge del motor refleja siempre el último usado.
+Perfiles principales:
 
-**¿Dónde quedan los PDFs generados?**
-En `backend/generated_reports/`. El nombre incluye número de factura y timestamp.
+- `Demo / Jurado`: puede recorrer todo el flujo.
+- `Operaciones`: registra/carga documentos.
+- `Antifraude`: revisa riesgo y alertas.
+- `Auditoría`: revisa auditorías.
+- `Costos` y `Contabilidad`: revisan montos, aprueban o escalan.
+- `Jefatura`: aprueba finalmente, rechaza o deriva a Legal.
+- `Legal`: revisa derivaciones.
+- `Administrador`: gestiona perfiles, contraseñas y auditoría del sistema.
 
-**¿Qué pasa si subo dos veces el mismo PDF?**
-La DB tiene `UniqueConstraint(invoice_number, workshop_id)`. El segundo intento es rechazado y el frontend bloquea cargas concurrentes con un flag in-flight.
+Los perfiles tienen contraseña. La clave maestra de testing por defecto es `admin`, configurable con `ADMIN_PASSWORD`.
 
-**¿Cómo cambio el puerto?**
-Editar `--port 8000` en el comando `uvicorn` (o en `start.bat` / `start.sh`).
+## 11. Reportes
 
----
+Desde el detalle de auditoría se pueden generar:
 
-## 8. Atajos útiles
+- Reporte interno con score y hallazgos.
+- Notificación al taller sin lenguaje acusatorio.
 
-| Acción                          | Cómo                                                |
-|---------------------------------|-----------------------------------------------------|
-| Generar 5 facturas mixtas       | `curl -X POST "http://localhost:8000/api/test-pdfs/random?scenario=mixed&count=5"` |
-| Listar resultados sin TEST      | `GET /api/audit-results?include_test=0`             |
-| Forzar regeneración escenarios  | `python -m backend.test_invoice_generator`          |
-| Ver lista de endpoints          | <http://localhost:8000/docs> (Swagger UI)           |
+## 12. Plataforma de Inteligencia
 
----
+Accesible desde el dashboard:
 
-## 9. Equipo
+- Métricas antifraude: distribución de riesgo, montos bajo alerta.
+- Métricas de cartera: distribución por ramo, vigencia, sumas.
+- Métricas operativas: tiempos, pendientes, cobertura.
+- Insight por siniestro: análisis detallado con DeepSeek V4 Flash.
+- Insight bajo demanda: briefings ejecutivos generados por IA.
 
-**Miraclex — HackIAthon 2026**
-Josue Salazar · Andres Abad · Andres Falconi
+## 13. Panel de Administración
+
+Solo accesible con perfil administrador:
+
+- Log de auditoría de todas las acciones del sistema.
+- Filtrado por acción y perfil.
+- Estadísticas agregadas por tipo de acción y rol.
+
+## 14. Preguntas Frecuentes
+
+**¿Necesito API key para arrancar?**  
+No. La app arranca sin API key. Para auditoría IA real se recomienda configurar `OPENCODE_GO_API_KEY`.
+
+**¿Qué pasa si DeepSeek V4 Flash no responde?**  
+El sistema usa reglas locales como fallback técnico y lo indica en la UI.
+
+**¿Dónde quedan los PDFs demo?**  
+En `backend/test_pdfs`.
+
+**¿Dónde quedan los reportes?**  
+Se sirven desde los endpoints de reportes de auditoría; el backend usa `backend/generated_reports` para archivos generados.
+
+**¿La app decide rechazos automáticamente?**  
+No. La app genera alertas y recomendaciones. La decisión final es humana (aprobar, rechazar, escalar o derivar a Legal).
+
+**¿Puedo importar datos desde CSV?**  
+Sí. El sistema soporta importación de siniestros (`POST /api/claims/import-csv`) y tarifario (`POST /api/tariffs/import-csv`).
+
+**¿Cómo funciona el chatbot?**  
+El chatbot recibe preguntas en lenguaje natural, genera consultas SQL automáticas y reescribe las respuestas con DeepSeek V4 Flash. Las respuestas están filtradas por perfil.
+
+## 15. Checklist de Demo Final
+
+1. Ejecutar `start.bat` o `npm start`.
+2. Abrir `http://localhost:8000/app/`.
+3. Entrar como `Demo / Jurado`.
+4. Mostrar panel `Dashboard`.
+5. Ejecutar `Expediente automático con IA`.
+6. Mostrar detalle de auditoría con hallazgos y score.
+7. Demostrar decisión humana (aprobar/escalar).
+8. Abrir workspace del siniestro y mostrar timeline.
+9. Probar chatbot con una pregunta.
+10. Mostrar métricas de inteligencia operativa.
+11. Mostrar flujo manual con PDFs si el jurado pide trazabilidad.

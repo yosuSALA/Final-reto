@@ -474,11 +474,12 @@ def _build_invoice_pdf(filepath: str, workshop: Dict, factura_meta: Dict,
 # ──────────────────────────────────────────────────────────────────────────────
 
 def generate_random_invoice(scenario: str = "mixed",
-                             output_dir: str = OUTPUT_DIR_DEFAULT) -> Dict:
+                             output_dir: str = OUTPUT_DIR_DEFAULT,
+                             claim_override: Dict | None = None) -> Dict:
     """Genera un PDF aleatorio + retorna metadata para preview en UI."""
     workshop = random.choice(WORKSHOPS_POOL)
     client_name, client_id = random.choice(CLIENTS_POOL)
-    claim = random.choice(CLAIMS_POOL)
+    claim = claim_override or random.choice(CLAIMS_POOL)
 
     fecha = datetime.now() - timedelta(days=random.randint(0, 25),
                                         hours=random.randint(0, 23),

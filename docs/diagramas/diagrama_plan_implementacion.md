@@ -19,9 +19,9 @@ gantt
         AuditAgent + upsert AuditResult                     :done, f1c, 2026-05-12, 2d
 
     section Fase 2 — IA Generativa
-        GeminiAuditor (CoT + few-shot)                      :done, f2a, 2026-05-14, 4d
+        DeepSeekAuditor (CoT + few-shot)                    :done, f2a, 2026-05-14, 4d
         Self-reflection pass + retry semántico              :done, f2b, 2026-05-17, 3d
-        Chatbot DeepSeek/Gemini fallback                    :done, f2c, 2026-05-19, 3d
+        Chatbot DeepSeek                                    :done, f2c, 2026-05-19, 3d
 
     section Fase 3 — Frontend SPA
         Dashboard + KPIs                                    :done, f3a, 2026-05-20, 3d
@@ -50,7 +50,7 @@ flowchart LR
     end
 
     subgraph V3["v2.0 — IA Agéntica (actual)"]
-        V3A["Gemini 2.5 Flash\nCoT + self-reflection\nChatbot DeepSeek\nPerfiles HMAC\nGenerador SRI Ecuador"]
+        V3A["DeepSeek V4 Flash\nCoT + self-reflection\nChatbot DeepSeek\nPerfiles HMAC\nGenerador SRI Ecuador"]
     end
 
     subgraph FUTURE["v3.0 — Producción (roadmap)"]

@@ -144,7 +144,7 @@ erDiagram
         int invoice_id FK
         float risk_score
         string status "approved/completed/escalated"
-        string audit_engine "rules/gemini"
+        string audit_engine "rules/deepseek"
         text executive_summary
         datetime audited_at
         string profile_id FK

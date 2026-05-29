@@ -41,12 +41,13 @@ mindmap
       QuantityAnomalyRule
       IncoherenceRule
       InvoiceResubmissionRule
-    Motor IA Gemini
+    Motor IA DeepSeek
       Chain-of-Thought
       Few-shot calibration
       Evidence citation
       Confidence calibration
       Semantic validation
+      Self-reflection pass
       Mock mode sin API key
     Tarifario Maestro
       Vista por categorías

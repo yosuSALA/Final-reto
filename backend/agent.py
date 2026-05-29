@@ -58,6 +58,8 @@ class AuditAgent:
             "invoice_id": invoice.id, "invoice_number": invoice.invoice_number,
             "claim_id": claim.id_siniestro, "claim_number": str(claim.id_siniestro),
             "claim_type": claim.ramo.value if claim.ramo else "",
+            "claim_cobertura": claim.cobertura.value if claim.cobertura else "",
+            "claim_cobertura": claim.cobertura.value if claim.cobertura else "",
             "workshop_ruc": invoice.workshop.ruc if invoice.workshop else "",
             "invoice_items": [{"id": i.id, "code": i.code or "", "description": i.description, "category": i.category or "", "quantity": i.quantity, "unit_price": i.unit_price, "total_price": i.total_price} for i in items],
             "tariff_map": tariff_map,
@@ -72,6 +74,8 @@ class AuditAgent:
             "audit_id": audit_result.id, "invoice_id": invoice.id,
             "invoice_number": invoice.invoice_number, "claim_number": str(claim.id_siniestro),
             "claim_type": claim.ramo.value if claim.ramo else "",
+            "claim_cobertura": claim.cobertura.value if claim.cobertura else "",
+            "claim_cobertura": claim.cobertura.value if claim.cobertura else "",
             "workshop_name": invoice.workshop.name if invoice.workshop else "",
             "status": audit_result.status.value, "risk_score": risk_score,
             "total_overcharge": round(total_overcharge, 2), "invoice_total": invoice.total,
@@ -91,18 +95,18 @@ class AuditAgent:
             parts.append(f"  {critical} hallazgo(s) CRITICO(S)")
         if warnings:
             parts.append(f"  {warnings} advertencia(s)")
-        if risk_score >= 70:
+        if risk_score >= 76:
             parts.append("  Recomendacion: ESCALAR para revision manual inmediata.")
-        elif risk_score >= 40:
+        elif risk_score >= 41:
             parts.append("  Recomendacion: Solicitar justificacion al taller.")
         else:
             parts.append("  Recomendacion: Revisar hallazgos menores.")
         return "\n".join(parts)
 
     def _save_result(self, invoice, claim, findings, risk_score, total_overcharge, summary):
-        if risk_score >= 70:
+        if risk_score >= 76:
             status = AuditStatus.ESCALATED
-        elif risk_score >= 30:
+        elif risk_score >= 41:
             status = AuditStatus.COMPLETED
         else:
             status = AuditStatus.APPROVED
@@ -162,6 +166,8 @@ class AuditAgent:
             "claim_id": claim.id_siniestro,
             "claim_number": str(claim.id_siniestro),
             "claim_type": claim.ramo.value if claim.ramo else "",
+            "claim_cobertura": claim.cobertura.value if claim.cobertura else "",
+            "claim_cobertura": claim.cobertura.value if claim.cobertura else "",
             "declaration": decl_dict,
             "history": history,
         }
@@ -240,6 +246,8 @@ class AuditAgent:
             "claim_id": claim.id_siniestro,
             "claim_number": str(claim.id_siniestro),
             "claim_type": claim.ramo.value if claim.ramo else "",
+            "claim_cobertura": claim.cobertura.value if claim.cobertura else "",
+            "claim_cobertura": claim.cobertura.value if claim.cobertura else "",
             "invoice_id": invoice.id,
             "invoice_number": invoice.invoice_number,
             "invoice_plate": invoice_plate,
@@ -311,9 +319,9 @@ class AuditAgent:
             f"Auditoría INICIAL del siniestro SIN-{claim.id_siniestro}: "
             f"{len(findings)} hallazgo(s) tempranos ({critical} críticos, {warn} advertencias)."
         ]
-        if risk_score >= 70:
+        if risk_score >= 76:
             parts.append("Recomendación: revisar antes de continuar con el parte policial.")
-        elif risk_score >= 30:
+        elif risk_score >= 41:
             parts.append("Recomendación: completar campos faltantes de la declaración.")
         return " ".join(parts)
 
@@ -329,16 +337,16 @@ class AuditAgent:
             f"Auditoría POST-PAGO factura {invoice.invoice_number} (SIN-{claim.id_siniestro}): "
             f"{len(findings)} hallazgo(s) ({critical} críticos, {warn} advertencias)."
         ]
-        if risk_score >= 70:
+        if risk_score >= 76:
             parts.append("Recomendación: ESCALAR a Jefatura para revisión manual.")
-        elif risk_score >= 40:
+        elif risk_score >= 41:
             parts.append("Recomendación: solicitar justificación al taller.")
         return " ".join(parts)
 
     def _save_result_stage(self, claim, invoice, findings, risk_score, total_overcharge, summary, stage: AuditStage):
-        if risk_score >= 70:
+        if risk_score >= 76:
             status = AuditStatus.ESCALATED
-        elif risk_score >= 30:
+        elif risk_score >= 41:
             status = AuditStatus.COMPLETED
         else:
             status = AuditStatus.APPROVED

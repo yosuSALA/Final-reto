@@ -25,7 +25,7 @@ block-beta
 
     block:IA["🤖 Capa de IA"]
         columns 3
-        D1["Gemini 2.5 Flash\nAuditoría facturas\n(CoT + few-shot)"] D2["DeepSeek Chat\nChatbot\nconversacional"] D3["SequenceMatcher\nSimilitud\nnarrativas S13"]
+        D1["DeepSeek V4 Flash\nAuditoría facturas\n(CoT + few-shot)"] D2["DeepSeek Chat\nChatbot\nconversacional"] D3["SequenceMatcher\nSimilitud\nnarrativas S13"]
     end
 
     block:STORAGE["🗄️ Almacenamiento"]
@@ -40,7 +40,7 @@ block-beta
 
     block:DEPLOY["☁️ Despliegue"]
         columns 2
-        G1["Render.com\n(render.yaml)\nruntime Python"] G2["Variables de entorno\nGOOGLE_API_KEY\nDEEPSEEK_API_KEY"]
+        G1["Render.com\n(render.yaml)\nruntime Python"]         G2["Variables de entorno\nOPENCODE_GO_API_KEY\nDEEPSEEK_API_KEY"]
     end
 ```
 
@@ -61,8 +61,8 @@ graph TD
     PDFPLUMBER --> PDFMINER["pdfminer.six (transitiva)"]
 
     APP --> REPORTLAB["reportlab ≥ 4.2"]
-    APP --> GOOGLEAI["google-genai"]
-    GOOGLEAI --> GEMINI["Gemini 2.5 Flash API"]
+    APP --> OPENCODEGO["urllib (OpenCode Go)"]
+    OPENCODEGO --> DEEPSEEK["DeepSeek V4 Flash API"]
 
     APP --> DIFFLIB["difflib (stdlib)\nSequenceMatcher"]
     APP --> HMAC["hmac + secrets (stdlib)\nTokens HMAC-SHA256"]
@@ -77,9 +77,9 @@ flowchart LR
     EXTRACT -->|"items[], invoice_num, ruc"| DB_INV["SQLite\ninvoices +\ninvoice_items"]
 
     DB_INV -->|"audit request"| RULES["rules_engine.py\n5 reglas"]
-    DB_INV -->|"audit request"| GEMINI_AUD["gemini_auditor.py\nCoT + few-shot"]
+    DB_INV -->|"audit request"| DS_AUD["deepseek_auditor.py\nCoT + few-shot"]
 
-    RULES & GEMINI_AUD -->|"findings[]"| AGENT["agent.py\ncalculate_risk_score()\nupsert AuditResult"]
+    RULES & DS_AUD -->|"findings[]"| AGENT["agent.py\ncalculate_risk_score()\nupsert AuditResult"]
     AGENT -->|"AuditResult"| DB_AUDIT["SQLite\naudit_results +\naudit_findings"]
 
     DB_AUDIT -->|"GET /api/dashboard"| DASH["Frontend\nDashboard SPA"]
@@ -88,6 +88,6 @@ flowchart LR
     PDF_GEN -->|"PDF inline"| BROWSER["Navegador\nPrevisualización PDF"]
 
     DB_INV & DB_AUDIT -->|"SQL query + profile_id"| CHATBOT["chatbot_agent.py"]
-    CHATBOT -->|"datos estructurados"| DEEPSEEK["DeepSeek API\no Gemini fallback"]
+    CHATBOT -->|"datos estructurados"| DEEPSEEK["DeepSeek V4 Flash\n(OpenCode Go)"]
     DEEPSEEK -->|"respuesta redactada"| BOT_UI["Frontend\nChatbot bubble"]
 ```

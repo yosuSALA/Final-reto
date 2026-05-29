@@ -18,8 +18,8 @@ graph TD
         API --> FraudEngine["🎯 Motor de Scoring\nfraud_scoring.py\n14 señales + 7 reglas → score 0-100"]
         API --> AuditAgent["🤖 Agente Auditor\nagent.py\nOrquesta pipeline: reglas / IA"]
         API --> RulesEngine["📏 Motor de Reglas\nrules_engine.py\nPriceOvercharge / Duplicate / Quantity\nIncoherence / Resubmission"]
-        API --> GeminiAuditor["✨ Gemini Auditor\ngemini_auditor.py\nCoT + few-shot + self-reflection"]
-        API --> Chatbot["💬 Chatbot Agent\nchatbot_agent.py\nDeepSeek / Gemini fallback"]
+        API --> DeepSeekAuditor["DeepSeek Auditor\ndeepseek_auditor.py\nCoT + few-shot + self-reflection"]
+        API --> Chatbot["Chatbot Agent\nchatbot_agent.py\nDeepSeek V4 Flash"]
         API --> PDFExtractor["📄 PDF Extractor\npdf_extractor.py\npdfplumber + regex"]
         API --> PDFGen["📑 PDF Generator\npdf_generator.py\nreportlab"]
         API --> Auth["🔐 Auth\nauth.py\nHMAC-SHA256 tokens"]
@@ -40,15 +40,13 @@ graph TD
         DB --> T10["audit_results / audit_findings"]
     end
 
-    subgraph IAProv["Proveedores IA (externos)"]
-        G["Google AI\nGemini 2.5 Flash"]
-        D["DeepSeek API\ndeepseek-chat"]
+    subgraph IAProv["Proveedor IA"]
+        D["OpenCode Go Gateway\nDeepSeek V4 Flash"]
     end
 
     API -->|"SQLAlchemy + ProfileScope"| DB
-    GeminiAuditor -->|"google-genai SDK"| G
+    DeepSeekAuditor -->|"REST urllib"| D
     Chatbot -->|"REST urllib"| D
-    Chatbot -.->|"fallback"| G
 
     subgraph Despliegue["Despliegue"]
         DOCKER["🐳 Docker\npython:3.11-slim"]

@@ -1,31 +1,105 @@
-# 🤖 Uso de Inteligencia Artificial — Aseguradora del Sur
+# Uso de Inteligencia Artificial — Miraclex
 
-El prototipo utiliza técnicas avanzadas de Inteligencia Artificial y Procesamiento de Lenguaje Natural (NLP) a través de un enfoque híbrido.
+La IA principal del sistema es **DeepSeek V4 Flash vía OpenCode Go**. Se usa para auditar facturas, generar explicaciones de riesgo en lenguaje natural, alimentar el chatbot inteligente y producir insights operativos bajo demanda.
 
-## 1. Auditoría Cognitiva de Facturas (Gemini 2.5 Flash)
+## 1. Prioridad de Motores
 
-Para auditar facturas complejas de talleres frente a los siniestros y al tarifario pactado, se implementa la clase `GeminiAuditor` que sigue los siguientes patrones:
+1. **DeepSeek V4 Flash vía OpenCode Go**: motor principal recomendado.
+2. **DeepSeek API directa**: fallback opcional si se configura `DEEPSEEK_API_KEY`.
+3. **Reglas locales**: fallback técnico si la IA falla o modo manual cuando el usuario lo solicita.
 
-- **Chain-of-Thought (Cadena de Razonamiento) Forzado**: El esquema JSON de respuesta obliga al modelo a rellenar el campo `cadena_de_razonamiento` antes de decidir la severidad y el veredicto final. Esto fuerza al LLM a computar los sobrecostos aritméticamente primero.
-- **Few-Shot Calibration**: Se proveen ejemplos estructurados de facturas reales en el prompt de sistema (una limpia y otra con fraudes intencionados) para fijar el estilo analítico.
-- **Self-Reflection Pass (Auto-Crítica)**: Una segunda llamada toma la respuesta inicial del modelo y le pide que actúe como un revisor escéptico. Esto permite corregir falsos positivos y encontrar hallazgos omitidos.
-- **Validación Semántica y Reintento**: Si la respuesta viola las reglas de consistencia de la aseguradora, se reenvía el prompt con retroalimentación explícita.
+## 2. Configuración
 
----
+Archivo `.env`:
 
-## 2. Agente conversacional Antifraude (DeepSeek / Gemini)
+```env
+OPENCODE_GO_API_KEY=tu_api_key
+OPENCODE_GO_API_BASE=https://opencode.ai/zen/go/v1
+OPENCODE_GO_MODEL=deepseek-v4-flash
 
-El chatbot conversacional (disponible en la burbuja de chat flotante) procesa consultas libres sobre siniestros y fraudes mediante un pipeline estructurado:
+DEEPSEEK_API_KEY=
+DEEPSEEK_API_BASE=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-chat
+```
 
-1. **Inferencia Local sobre Base de Datos**: El backend de FastAPI intercepta la pregunta y realiza búsquedas estructuradas en las tablas SQL (`Poliza`, `AseguradoSintetico`, `Siniestro`, `Documento`). Esto recopila la información factual precisa.
-2. **Contextualización de Prompts**: Se construye un prompt que une la pregunta del usuario y los datos duros recuperados.
-3. **Llamada de Reescritura Cognitiva**:
-   - **DeepSeek (Principal)**: Si `DEEPSEEK_API_KEY` está configurada, se consume el modelo `deepseek-chat` para dotar de una redacción elocuente y ejecutiva a los datos técnicos.
-   - **Gemini (Fallback)**: Si no hay clave de DeepSeek pero está `GOOGLE_API_KEY`, se llama a `gemini-2.5-flash`.
-   - **Formateador Local (Fallback Técnico)**: Si no hay claves de API, el sistema formatea los datos estructurados en markdown limpio para no interrumpir la experiencia de usuario.
+## 3. Auditoría de Facturas
 
----
+Archivo: `backend/deepseek_auditor.py`.
 
-## 3. NLP en Comparación de Siniestros (SequenceMatcher)
+Capacidades:
 
-Para la señal **S13 (Narrativas Coincidentes)**, se implementa una lógica de procesamiento de textos que evalúa la similitud de caracteres entre la descripción del siniestro actual y el historial completo de siniestros. Si la coincidencia supera el **75%**, se activa una señal de alerta por copia o clonación de narrativas de fraude.
+- Extrae contexto de factura, siniestro, declaración, parte policial y tarifario.
+- Evalúa sobrecobros, duplicados, incoherencias y señales de riesgo.
+- Devuelve hallazgos estructurados.
+- Incluye severidad, evidencia, recomendación y confianza.
+- Aplica validación semántica y reintento si la respuesta no cumple el esquema esperado.
+- Soporte de historial de facturas para detección cruzada.
+
+Modalidades de auditoría IA:
+
+| Endpoint | Descripción |
+|---|---|
+| `POST /api/audit-ai/{invoice_id}` | Auditoría individual con DeepSeek V4 Flash |
+| `POST /api/audit-ai-all` | Auditoría masiva concurrente (configurable con `AI_AUDIT_CONCURRENCY`) |
+| `POST /api/audit-deepseek-batch` | Auditoría batch |
+| `POST /api/audit/{invoice_id}` | Auditoría con agente (DeepSeek principal + reglas como fallback) |
+
+## 4. Chatbot Inteligente
+
+Archivo: `backend/chatbot_agent.py`.
+
+Capacidades:
+
+- Preguntas en lenguaje natural sobre datos del sistema.
+- Inferencia SQL automática desde la pregunta del usuario.
+- Reescritura de respuestas con DeepSeek V4 Flash para lenguaje natural.
+- Restricciones por perfil: cada rol recibe respuestas limitadas a su ámbito.
+- Widget de burbuja flotante en el frontend (`frontend/js/components/chatbotBubble.js`).
+
+Endpoint: `POST /api/agent/query`.
+
+## 5. Insights de Inteligencia Operativa
+
+Endpoint: `POST /api/intelligence/deepseek-insight`.
+
+Tipos de insight disponibles:
+
+| Tipo | Descripción |
+|---|---|
+| `explain_risk` | Explica indicadores de riesgo de un siniestro |
+| `explain_fraud_score` | Desglosa componentes del score de fraude |
+| `summarize_claim` | Resumen ejecutivo del siniestro |
+| `portfolio_summary` | Resumen de desempeño de cartera |
+| `branch_analysis` | Análisis comparativo por sucursal |
+| `executive_briefing` | Briefing ejecutivo con hallazgos y acciones |
+| `explain_anomaly` | Explicación de anomalías detectadas |
+
+El sistema adapta el prompt según el rol del usuario (demo_jurado, analista, antifraude, jefatura, auditoria).
+
+## 6. Patrones de Prompting
+
+- **Chain-of-Thought forzado**: schema JSON obliga a `cadena_de_razonamiento` antes del veredicto.
+- **Few-shot calibration**: 2 ejemplos en system prompt (factura limpia + factura con fraude).
+- **Self-reflection pass**: segunda llamada como revisor escéptico.
+- **Validación semántica + retry**: si la respuesta viola reglas, se reenvía con feedback.
+- **Confianza calibrada 0.0-1.0**: hallazgos CRITICAL requieren confianza >= 0.7.
+
+## 7. Fallback de Reglas
+
+El fallback existe para que la demo no se bloquee si la API de IA no responde.
+
+Casos en que se usan reglas:
+
+- Error 500/503 al llamar DeepSeek.
+- Falta de configuración de API en una ruta crítica.
+- Acción manual seleccionada por el usuario.
+
+La UI muestra cuando se usó fallback.
+
+## 8. Principios Éticos
+
+- La IA no acusa ni determina culpabilidad.
+- La IA genera alertas de posible riesgo.
+- Toda aprobación, rechazo, escalamiento o envío a legal es decisión humana.
+- Los datos de demo son sintéticos.
+- Los insights siempre citan datos suministrados; nunca inventan métricas.

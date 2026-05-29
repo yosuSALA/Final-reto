@@ -1,209 +1,238 @@
-# Stack Tecnológico — Aseguradora del Sur
+# Stack Tecnologico — Aseguradora del Sur
 
-**Proyecto:** Auditor Técnico y Detector de Riesgo Agéntico  
-**Equipo:** Miraclex — HackIAthon 2026  
-**Versión:** 2.0.0
+**Proyecto:** Auditor Tecnico y Detector de Riesgo Agentico
+**Equipo:** Miraclex — HackIAthon 2026
+**Version:** 2.0.0
 
 ---
 
 ## Resumen ejecutivo
 
-Sistema de auditoría agéntica para aseguradoras que combina un motor de reglas determinístico con IA generativa (Gemini 2.5 Flash) para detectar fraude en siniestros y facturas de talleres mecánicos. La arquitectura es intencional­mente compacta: un solo proceso Python sirve tanto la API REST como los archivos estáticos del frontend.
+Sistema de auditoría agéntica para aseguradoras que usa DeepSeek V4 Flash como motor principal y reglas determinísticas como fallback/manual. La arquitectura es compacta: un solo proceso Python sirve API REST, frontend estático y PDFs de demo.
 
 ---
 
 ## 1. Backend
 
-| Capa | Tecnología | Versión | Rol |
+| Capa | Tecnologia | Version | Rol |
 |------|-----------|---------|-----|
-| Framework web | **FastAPI** | ≥ 0.111 | API REST asíncrona, Swagger UI automático en `/docs` |
-| Servidor ASGI | **Uvicorn** | ≥ 0.29 (`[standard]`) | Servidor de producción con WebSockets y HTTP/1.1 |
-| ORM | **SQLAlchemy** | ≥ 2.0 | Modelos relacionales, sesiones, migraciones inline (`ALTER TABLE`) |
-| Base de datos | **SQLite 3** | (bundled Python) | Archivo `auditor.db`; FK pragma activado; ideal para prototipo single-node |
-| Validación | **Pydantic** | v2 | Schemas de request/response; validación automática de tipos |
-| Extracción PDF | **pdfplumber** | ≥ 0.11 | Extrae texto y tablas de facturas SRI Ecuador |
-| Generación PDF | **reportlab** | ≥ 4.2 | PDFs internos (con risk score) y notificaciones al taller |
-| Multipart | **python-multipart** | ≥ 0.0.9 | Soporte `UploadFile` en FastAPI |
-| Variables entorno | **python-dotenv** | ≥ 1.0 | Carga `.env` en desarrollo |
-| Hot-reload | **watchdog** | ≥ 4.0 | Reloader de archivos en desarrollo |
-| NLP similitud | **difflib (stdlib)** | — | `SequenceMatcher` para señal S13 (narrativas coincidentes ≥ 75 %) |
-| Seguridad tokens | **hmac + secrets (stdlib)** | — | HMAC-SHA256 para tokens de perfil; `compare_digest` anti-timing |
+| Framework web | **FastAPI** | >= 0.111 | API REST asincrona, Swagger UI automatico en `/docs` |
+| Servidor ASGI | **Uvicorn** | >= 0.29 (`[standard]`) | Servidor de produccion con WebSockets |
+| ORM | **SQLAlchemy** | >= 2.0 | Modelos relacionales, sesiones, migraciones inline |
+| Base de datos | **SQLite 3** | (bundled Python) | Archivo `auditor.db`; FK pragma activado |
+| Validacion | **Pydantic** | v2 | Schemas de request/response |
+| Extraccion PDF | **pdfplumber** | >= 0.11 | Extrae texto y tablas de facturas SRI Ecuador |
+| Generacion PDF | **reportlab** | >= 4.2 | PDFs internos y notificaciones al taller |
+| Multipart | **python-multipart** | >= 0.0.9 | Soporte `UploadFile` en FastAPI |
+| Variables entorno | **python-dotenv** | >= 1.0 | Carga `.env` en desarrollo |
+| Hot-reload | **watchdog** | >= 4.0 | Reloader de archivos en desarrollo |
+| NLP similitud | **difflib (stdlib)** | -- | `SequenceMatcher` para senial S13 |
+| Seguridad tokens | **hmac + secrets (stdlib)** | -- | HMAC-SHA256 para tokens de perfil |
 
-### Módulos del backend
+### Modulos del backend
 
 ```
 backend/
-├── main.py           — App FastAPI, 50+ endpoints REST, middleware CORS/no-cache
-├── models.py         — SQLAlchemy ORM (13 tablas + enums)
-├── database.py       — Engine SQLite, SessionLocal, init_db, migración liviana
-├── fraud_scoring.py  — Motor de scoring: 14 señales + 7 reglas (score 0-100)
-├── rules_engine.py   — 5 reglas de auditoría de facturas (PriceOvercharge, Duplicate…)
-├── agent.py          — AuditAgent: orquesta pipeline reglas → score → AuditResult
-├── gemini_auditor.py — GeminiAuditor: CoT, few-shot, self-reflection, retry
-├── chatbot_agent.py  — Chatbot: inferencia SQL + reescritura LLM (DeepSeek / Gemini)
-├── pdf_extractor.py  — Extracción de facturas PDF con regex + pdfplumber
-├── pdf_generator.py  — Generación de reportes PDF con reportlab
-├── auth.py           — Generación y verificación de tokens HMAC por perfil
-├── seed_data.py       — Datos demo: talleres, tarifario (25 ítems), 60+ siniestros
-└── profile_scope.py  — ProfileScope: wrapper SQLAlchemy para aislamiento por perfil
+├── main.py                -- App FastAPI, 65+ endpoints REST
+├── models.py              -- SQLAlchemy ORM (13+ tablas + enums)
+├── database.py            -- Engine SQLite, SessionLocal, init_db
+├── fraud_scoring.py       -- scoring de riesgo de siniestros (14 señales + 7 RF)
+├── rules_engine.py        -- reglas locales de auditoría de facturas
+├── agent.py               -- AuditAgent: pipeline de reglas/fallback
+├── deepseek_auditor.py    -- DeepSeekAuditor: CoT, few-shot, self-reflection
+├── chatbot_agent.py       -- Chatbot: inferencia SQL + reescritura DeepSeek V4 Flash
+├── pdf_extractor.py       -- Extraccion de facturas PDF
+├── declaration_extractor.py -- Extraccion de declaraciones PDF
+├── police_report_extractor.py -- Extraccion de partes policiales PDF
+├── police_report_policy.py -- Politicas de partes policiales
+├── pdf_generator.py       -- Generacion de reportes PDF
+├── auth.py                -- Tokens HMAC + contraseñas con hash/salt
+├── seed_data.py           -- Datos demo
+├── seed_fraud_data.py     -- Datos demo con patrones de fraude plantados
+├── profile_scope.py       -- ProfileScope: aislamiento por perfil
+└── test_invoice_generator.py -- Generador de facturas SRI de prueba
 ```
 
 ---
 
 ## 2. Inteligencia Artificial
 
-| Modelo / Técnica | Proveedor | Uso |
+| Modelo / Tecnica | Proveedor | Uso |
 |-----------------|-----------|-----|
-| **Gemini 2.5 Flash** | Google AI (`google-genai`) | Auditoría cognitiva de facturas: Chain-of-Thought, few-shot calibration, self-reflection pass, validación semántica + retry |
-| **DeepSeek Chat** (`deepseek-chat`) | DeepSeek API (REST directo) | Chatbot conversacional: reescritura elocuente de datos SQL |
-| **Gemini 2.5 Flash** (fallback) | Google AI | Chatbot cuando no hay clave DeepSeek |
-| **Formateador local** | Ninguno | Fallback técnico si no hay ninguna API key; formatea datos SQL en Markdown |
-| **SequenceMatcher** | Python stdlib (`difflib`) | Señal S13: similitud de narrativas ≥ 75 % → alerta de clonación |
+| **DeepSeek V4 Flash** (`deepseek-v4-flash`) | OpenCode Go Gateway | Auditoria cognitiva de facturas: CoT, few-shot, self-reflection, validacion semantica + retry |
+| **DeepSeek V4 Flash** (`deepseek-v4-flash`) | OpenCode Go Gateway | Chatbot inteligente: inferencia SQL + reescritura en lenguaje natural |
+| **DeepSeek V4 Flash** (`deepseek-v4-flash`) | OpenCode Go Gateway | Insights de inteligencia operativa bajo demanda |
+| **DeepSeek Chat** (`deepseek-chat`) | DeepSeek API (fallback directo) | Alternativa si no se usa OpenCode Go |
+| **Reglas locales** | Backend propio | Fallback técnico si DeepSeek/API falla o auditoría manual |
+| **SequenceMatcher** | Python stdlib (`difflib`) | Similitud local de narrativas |
 
 ### Patrones de prompting implementados
 
-- **Chain-of-Thought forzado**: el schema JSON obliga al campo `cadena_de_razonamiento` antes del veredicto.
-- **Few-shot calibration**: 2 ejemplos en el system prompt (factura limpia + factura con fraude).
-- **Self-reflection pass**: segunda llamada actúa como revisor escéptico de la primera respuesta.
-- **Validación semántica + retry**: si la respuesta viola reglas de consistencia se reenvía con feedback explícito.
-- **Confianza calibrada 0.0–1.0**: hallazgos CRITICAL requieren confianza ≥ 0.7.
+- **Chain-of-Thought forzado**: schema JSON obliga a `cadena_de_razonamiento` antes del veredicto.
+- **Few-shot calibration**: 2 ejemplos en system prompt (factura limpia + factura con fraude).
+- **Self-reflection pass**: segunda llamada como revisor esceptico.
+- **Validacion semantica + retry**: si la respuesta viola reglas, se reenvia con feedback.
+- **Confianza calibrada 0.0-1.0**: hallazgos CRITICAL requieren confianza >= 0.7.
+- **Prompts adaptativos por rol**: el sistema ajusta el prompt según el rol del usuario para insights.
+
+### Modalidades de uso de IA
+
+| Modalidad | Endpoint | Descripcion |
+|-----------|----------|-------------|
+| Auditoría individual | `POST /api/audit-ai/{invoice_id}` | Una factura con DeepSeek V4 Flash |
+| Auditoría masiva | `POST /api/audit-ai-all` | Todas las facturas, concurrencia configurable |
+| Auditoría batch | `POST /api/audit-deepseek-batch` | Batch optimizado |
+| Chatbot | `POST /api/agent/query` | Pregunta libre con inferencia SQL |
+| Insight operativo | `POST /api/intelligence/deepseek-insight` | 7 tipos de análisis bajo demanda |
 
 ---
 
 ## 3. Frontend
 
-| Tecnología | Rol |
+| Tecnologia | Rol |
 |-----------|-----|
 | **HTML5** | Estructura SPA (`index.html`), landing page |
-| **JavaScript ES Modules (Vanilla)** | Lógica de cliente sin bundler ni framework |
+| **JavaScript ES Modules (Vanilla)** | Logica de cliente sin bundler ni framework |
 | **CSS3 Custom Properties** | Temas claro/oscuro, glassmorphism, micro-animaciones |
-| **Google Fonts CDN** | Tipografías Inter (UI) + JetBrains Mono (código) |
+| **Google Fonts CDN** | Tipografias Inter (UI) + JetBrains Mono (codigo) |
 
 ### Arquitectura SPA
 
 ```
 frontend/
-├── index.html            — Shell: nav, #main-content, toast, widgets flotantes
-├── landing.html          — Página de entrada pública
-├── style.css             — Diseño completo (dark/light theme, responsive)
+├── index.html              -- Shell: nav, #main-content, widgets flotantes
+├── style.css               -- Diseno completo (dark/light theme, responsive)
 └── js/
-    ├── main.js           — Entry point; expone globals para onclick handlers
-    ├── router.js         — SPA hash-router (#dashboard, #auditorias, etc.)
-    ├── state.js          — Estado global: perfil activo, resultados, selección
-    ├── api.js            — Capa HTTP: GET/POST con inyección de X-Profile-Token
-    ├── auth.js           — Selector de perfil, generación/verificación de tokens
+    ├── main.js             -- Entry point; expone globals
+    ├── router.js           -- SPA hash-router
+    ├── state.js            -- Estado global
+    ├── api.js              -- Capa HTTP con X-Profile-Token
+    ├── auth.js             -- Selector de perfil, login, tokens
+    ├── utils.js            -- Utilidades compartidas
     ├── components/
-    │   ├── auditQueue.js     — Widget colapsable de cola de auditoría
-    │   ├── chatbotBubble.js  — Burbuja flotante de chat con FAQs precargadas
-    │   └── charts.js         — Gráficos (scatter, donut)
+    │   ├── auditQueue.js   -- Cola de auditoria colapsable
+    │   ├── chatbotBubble.js-- Burbuja de chat flotante (DeepSeek V4 Flash)
+    │   ├── charts.js       -- Graficos (scatter, donut)
+    │   └── csvUpload.js    -- Componente de importación CSV
     └── pages/
-        ├── dashboard.js      — KPIs, semáforo, auditoría masiva
-        ├── auditorias.js     — Pestañas: Pendientes / Revisadas
-        ├── tarifario.js      — CRUD del tarifario maestro
-        ├── siniestros.js     — Vista expandible de siniestros + notificaciones
-        ├── upload.js         — Drag-drop PDF + generador random SRI Ecuador
-        ├── auditDetail.js    — Detalle de auditoría, acciones (Aprobar/Rechazar/Escalar)
-        └── pendingDetail.js  — Detalle de factura pendiente (JIT audit)
+        ├── dashboard.js    -- KPIs, semaforo, inteligencia
+        ├── auditorias.js   -- Pendientes / Revisadas
+        ├── tarifario.js    -- CRUD tarifario + import CSV
+        ├── siniestros.js   -- Vista expandible + workspace
+        ├── upload.js       -- Drag-drop PDF + generador SRI
+        ├── auditDetail.js  -- Detalle de auditoria + decisiones
+        ├── pendingDetail.js-- Detalle de factura pendiente
+        ├── claimWorkspace.js-- Workspace centralizado del siniestro
+        └── adminAuditLog.js-- Panel de log de auditoría (admin)
 ```
 
 ---
 
 ## 4. Proxy y despliegue
 
-| Herramienta | Versión | Uso |
-|------------|---------|-----|
-| **Node.js + Express** | ≥ 18 / ^4.19 | Proxy de desarrollo: `/api` → FastAPI `:8000`, estáticos desde `/public` |
-| **http-proxy-middleware** | ^3.0.2 | Middleware de proxy en Express |
-| **Docker** | — | Imagen base `python:3.11-slim` + gcc + libffi |
-| **Docker Compose** | — | Servicio `app` con volúmenes para `auditor.db` y `.env` |
-| **Render.com** | — | Plataforma de deployment (`render.yaml`); runtime Python, start uvicorn |
+| Herramienta | Uso |
+|------------|-----|
+| **Node.js + Express** | Proxy de desarrollo: `/api` -> FastAPI `:8000` |
+| **http-proxy-middleware** | Middleware de proxy |
+| **Docker + Compose** | Imagen `python:3.11-slim` |
+| **Render.com** | Plataforma de deployment (`render.yaml`) |
 
 ### Scripts de inicio
 
-| Comando | Plataforma | Descripción |
+| Comando | Plataforma | Descripcion |
 |---------|-----------|-------------|
 | `start.bat` | Windows | Instala deps + lanza uvicorn |
-| `bash start.sh` | Mac/Linux | Ídem |
-| `npm run dev` | Cualquiera | Express dev proxy en `:8010` |
-| `docker-compose up` | Cualquiera | Contenedor con bind de BD y `.env` |
+| `bash start.sh` | Mac/Linux | Idem |
+| `npm start` | Cualquiera | Launcher portable vía Node |
+| `npm run dev` | Cualquiera | Igual que `npm start` |
+| `docker-compose up` | Cualquiera | Contenedor |
 
 ---
 
 ## 5. Seguridad
 
-| Mecanismo | Implementación |
+| Mecanismo | Implementacion |
 |-----------|---------------|
-| **Autenticación sin contraseña** | HMAC-SHA256(`profile_id`, `token_secret`) almacenado en `localStorage` |
-| **Header de sesión** | `X-Profile-Token: {profile_id}:{firma}` inyectado en cada request |
-| **Anti-timing attack** | `hmac.compare_digest()` en la verificación del backend |
+| **Autenticacion con contrasena** | Hash + salt para cada perfil |
+| **Tokens de sesion** | HMAC-SHA256(`profile_id`, `token_secret`) |
+| **Header de sesion** | `X-Profile-Token: {profile_id}:{firma}` |
+| **Anti-timing attack** | `hmac.compare_digest()` |
 | **Aislamiento de datos** | `ProfileScope`: toda query lleva `WHERE profile_id = ?` |
-| **IDs no adivinables** | UUIDs v4 para `profile_id` (2¹²² combinaciones) |
-| **FK en 7 tablas** | Integridad referencial por `profile_id` en SQLite |
+| **IDs no adivinables** | UUIDs v4 para `profile_id` |
+| **FK en 7 tablas** | Integridad referencial por `profile_id` |
+| **Clave maestra** | Perfil admin con password configurable (`ADMIN_PASSWORD`) |
+| **Log de auditoría** | Middleware registra todas las escrituras en `audit_log` |
 
 ---
 
 ## 6. Modelo de datos (tablas principales)
 
-| Tabla | Registros demo | Descripción |
+| Tabla | Registros demo | Descripcion |
 |-------|---------------|-------------|
-| `profiles` | 5 | Perfiles de usuario con token_secret |
-| `siniestros` | 60+ | Reclamos con 34 campos + fraud_score |
-| `polizas` | 60+ | Contratos de seguro con vigencia y suma asegurada |
-| `asegurados_sinteticos` | ~20 | Titulares de pólizas |
-| `vehiculos` | ~20 | Vehículos asegurados |
-| `documentos` | ~120 | Evidencias por siniestro |
-| `workshops` | 3 | Talleres mecánicos |
-| `invoices` | Variable | Facturas con UniqueConstraint(invoice_number, workshop_id) |
-| `invoice_items` | Variable | Líneas de factura |
+| `profiles` | ~5 | Perfiles de usuario con token_secret y password_hash |
+| `siniestros` | Variable | Reclamos con trazabilidad y fraud_score |
+| `polizas` | Variable | Contratos con vigencia y suma asegurada |
+| `asegurados_sinteticos` | Variable | Titulares de pólizas |
+| `vehiculos` | Variable | Vehículos asegurados |
+| `documentos` | Variable | Evidencias por siniestro |
+| `accident_declarations` | Variable | Declaraciones de accidente |
+| `police_reports` | Variable | Partes policiales |
+| `workshops` | 3 | Talleres mecanicos |
+| `invoices` | Variable | Facturas |
+| `invoice_items` | Variable | Lineas de factura |
 | `tariff_items` | 25 | Tarifario maestro con tolerancia % |
-| `audit_results` | Variable | Resultados de auditoría (upsert, no duplicación) |
-| `audit_findings` | Variable | Hallazgos individuales por resultado |
+| `audit_results` | Variable | Resultados de auditoria (upsert) |
+| `audit_findings` | Variable | Hallazgos individuales |
+| `audit_log` | Variable | Log de acciones del sistema |
 
 ---
 
 ## 7. Variables de entorno
 
-| Variable | Obligatoria | Descripción |
+| Variable | Obligatoria | Descripcion |
 |----------|------------|-------------|
-| `GOOGLE_API_KEY` | No | Habilita el motor IA Gemini. Sin ella, modo mock. |
-| `DEEPSEEK_API_KEY` | No | Chatbot con DeepSeek. Fallback a Gemini o formateador local. |
-| `DATABASE_PATH` | No | Ruta del archivo SQLite (default: `auditor.db`) |
-| `PORT` | No | Puerto Express proxy (default: `8010`) |
-| `HOST` | No | Host Express proxy (default: `127.0.0.1`) |
+| `OPENCODE_GO_API_KEY` | No | Habilita DeepSeek V4 Flash via OpenCode Go |
+| `OPENCODE_GO_API_BASE` | No | Gateway URL (default: `https://opencode.ai/zen/go/v1`) |
+| `OPENCODE_GO_MODEL` | No | Modelo (default: `deepseek-v4-flash`) |
+| `DEEPSEEK_API_KEY` | No | Fallback directo a DeepSeek |
+| `DEEPSEEK_API_BASE` | No | API base DeepSeek (default: `https://api.deepseek.com`) |
+| `DEEPSEEK_MODEL` | No | Modelo fallback (default: `deepseek-chat`) |
+| `DATABASE_PATH` | No | Ruta SQLite (default: `auditor.db`) |
+| `ADMIN_PASSWORD` | No | Clave maestra del perfil admin (default: `admin`) |
+| `AI_AUDIT_CONCURRENCY` | No | Workers concurrentes para auditoría masiva (default: `4`, max: `8`) |
 
 ---
 
-## 8. Flujo de datos de extremo a extremo
+## 8. Flujo de datos
 
 ```
 PDF factura
-    │
-    ▼
-pdf_extractor.py  (pdfplumber + regex)
-    │  items[], ruc, invoice_number, fecha
-    ▼
-Invoice + InvoiceItems  ──────────────────────────────────┐
-    │                                                      │
-    ▼                                                      │
-Motor elegido por el analista                             │
-    │                                                      │
-    ├─ ⚡ rules_engine.py (PriceOvercharge,               │
-    │      Duplicate, Quantity, Incoherence,               │
-    │      Resubmission) → findings[]                     │
-    │                                                      │
-    └─ 🤖 gemini_auditor.py (CoT + few-shot              │
-           + self-reflection) → findings[]                │
-    │                                                      │
-    ▼                                                      │
-agent.py                                                  │
-    │  calculate_risk_score() → 0-100                     │
-    │  _generate_summary()                                │
-    │  _save_result() [upsert]                            │
-    ▼                                                      │
-AuditResult + AuditFindings ◄────────────────────────────┘
-    │
-    ├─► GET /api/audit-results  (dashboard)
-    ├─► GET /api/audit-results/{id}  (detalle)
-    ├─► pdf_generator.py  → Reporte Interno PDF
-    └─► pdf_generator.py  → Notificación Taller PDF
+    |
+    v
+pdf_extractor.py (pdfplumber + regex)
+    |  items[], ruc, invoice_number, fecha
+    v
+Invoice + InvoiceItems
+    |
+    v
+Motor principal / fallback
+    |
+    +-- rules_engine.py (fallback/manual) -> findings[]
+    |
+    +-- deepseek_auditor.py (CoT + few-shot + self-reflection) -> findings[]
+    |
+    v
+agent.py
+    |  calculate_risk_score() -> 0-100
+    |  _generate_summary()
+    |  _save_result() [upsert]
+    v
+AuditResult + AuditFindings
+    |
+    +-> GET /api/audit-results (dashboard)
+    +-> GET /api/audit-results/{id} (detalle)
+    +-> pdf_generator.py -> Reporte Interno PDF
+    +-> pdf_generator.py -> Notificacion Taller PDF
+    +-> Decisión humana (approve/reject/escalate/send-to-legal)
+    +-> GET /api/legal/notifications (siniestros derivados)
 ```

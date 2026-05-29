@@ -57,7 +57,7 @@ def process_chatbot_query(question: str, db: Session, profile_id: str = None) ->
 
     # Clasificar basándose en los 12 tipos de preguntas del PDF
     # Q1: Top 10 siniestros
-    if any(k in q_clean for k in ["top 10", "10 siniestros", "mayor riesgo", "más riesgosos", "mayor score", "ranking"]):
+    if any(k in q_clean for k in ["top 10", "10 siniestros", "mayor riesgo", "más riesgosos", "mayor score", "ranking", "más peligrosos", "mas peligrosos", "peores siniestros", "siniestros graves", "casos graves", "casos críticos", "criticos", "casos rojos", "alertas rojas", "riesgo alto"]):
         question_type = "Q1"
         claims = _q(Siniestro).order_by(Siniestro.fraud_score.desc()).limit(10).all()
         res = []
@@ -66,7 +66,7 @@ def process_chatbot_query(question: str, db: Session, profile_id: str = None) ->
         raw_data = "\n".join(res) if res else "No hay siniestros en la base de datos."
 
     # Q2: ¿Por qué SIN-X fue marcado con alto riesgo?
-    elif any(k in q_clean for k in ["por qué", "por que", "motivo", "razon"]) and ("sin-" in q_clean or "siniestro" in q_clean):
+    elif any(k in q_clean for k in ["por qué", "por que", "motivo", "razon", "por que fue", "que paso con", "qué pasó", "por que tiene", "por que esta", "explícame", "explicame", "detalla", "detalle de", "información de", "informacion de", "datos de", "qué tiene", "que tiene"]) and ("sin-" in q_clean or "siniestro" in q_clean or re.search(r"\b\d+\b", q_clean)):
         question_type = "Q2"
         # Intentar extraer ID del siniestro
         claim_id_match = re.search(r"sin-(\d+)", q_clean) or re.search(r"siniestro\s+(\d+)", q_clean) or re.search(r"\b(\d+)\b", q_clean)
@@ -99,7 +99,7 @@ def process_chatbot_query(question: str, db: Session, profile_id: str = None) ->
             raw_data = "No se pudo identificar el número de siniestro en tu pregunta. Por favor indica ej: '¿Por qué el siniestro SIN-2 fue marcado?'"
 
     # Q3: Proveedores con más alertas
-    elif any(k in q_clean for k in ["proveedor", "proveedores", "taller", "talleres"]) and any(k in q_clean for k in ["alertas", "concentran", "sospechosos", "más"]):
+    elif any(k in q_clean for k in ["proveedor", "proveedores", "taller", "talleres", "tallerista", "talleristas"]) and any(k in q_clean for k in ["alertas", "concentran", "sospechosos", "más", "mas", "mayor", "reincidentes", "fraudulentos", "problemáticos", "problematicos"]):
         question_type = "Q3"
         results = db.query(
             Workshop.name,
@@ -117,7 +117,7 @@ def process_chatbot_query(question: str, db: Session, profile_id: str = None) ->
         raw_data = "\n".join(res) if res else "No hay talleres con facturas observadas."
 
     # Q4: Ramos con mayor % de casos sospechosos
-    elif any(k in q_clean for k in ["ramo", "ramos"]) and any(k in q_clean for k in ["porcentaje", "porcentajes", "%", "sospechosos", "mayor"]):
+    elif any(k in q_clean for k in ["ramo", "ramos", "línea de negocio", "linea de negocio"]) and any(k in q_clean for k in ["porcentaje", "porcentajes", "%", "sospechosos", "mayor", "más", "mas", "cual tiene más", "cual tiene mas"]):
         question_type = "Q4"
         from collections import defaultdict
         claims = db.query(Siniestro).all()
@@ -138,7 +138,7 @@ def process_chatbot_query(question: str, db: Session, profile_id: str = None) ->
         raw_data = "\n".join(res)
 
     # Q5: Ciudades con mayor concentración
-    elif any(k in q_clean for k in ["ciudad", "ciudades", "concentracion", "concentración", "sucursal", "sucursales"]):
+    elif any(k in q_clean for k in ["ciudad", "ciudades", "concentracion", "concentración", "sucursal", "sucursales", "zona", "zonas", "región", "region", "ubicación", "ubicacion", "geográfico", "geografico"]):
         question_type = "Q5"
         from collections import defaultdict
         claims = db.query(Siniestro).all()
@@ -154,7 +154,7 @@ def process_chatbot_query(question: str, db: Session, profile_id: str = None) ->
         raw_data = "\n".join(res) if res else "No se encontraron alertas en sucursales."
 
     # Q6: Asegurados con mayor frecuencia
-    elif any(k in q_clean for k in ["asegurado", "asegurados"]) and any(k in q_clean for k in ["frecuencia", "frecuentes", "más reclamos", "mas reclamos"]):
+    elif any(k in q_clean for k in ["asegurado", "asegurados", "cliente", "clientes", "titular", "titulares"]) and any(k in q_clean for k in ["frecuencia", "frecuentes", "más reclamos", "mas reclamos", "reincidentes", "más siniestros", "mas siniestros", "muchos siniestros"]):
         question_type = "Q6"
         aseg = db.query(AseguradoSintetico).order_by(AseguradoSintetico.reclamos_12m.desc()).limit(10).all()
         res = []
@@ -163,7 +163,7 @@ def process_chatbot_query(question: str, db: Session, profile_id: str = None) ->
         raw_data = "\n".join(res)
 
     # Q7: Documentos faltantes en casos críticos
-    elif any(k in q_clean for k in ["documento", "documentos", "falta", "faltan", "faltantes"]) and any(k in q_clean for k in ["crítico", "critico", "críticos", "criticos", "alto riesgo"]):
+    elif any(k in q_clean for k in ["documento", "documentos", "falta", "faltan", "faltantes", "incompleto", "incompletos", "pendiente", "pendientes"]) and any(k in q_clean for k in ["crítico", "critico", "críticos", "criticos", "alto riesgo", "rojos", "graves"]):
         question_type = "Q7"
         claims = db.query(Siniestro).filter(Siniestro.fraud_score > 75).all()
         res = []
@@ -193,7 +193,7 @@ def process_chatbot_query(question: str, db: Session, profile_id: str = None) ->
         raw_data = "\n".join(res) if res else "No hay montos atípicos detectados."
 
     # Q9: Siniestros cerca del inicio de póliza
-    elif any(k in q_clean for k in ["inicio", "borde", "vigencia", "cerca"]) and any(k in q_clean for k in ["poliza", "póliza"]):
+    elif any(k in q_clean for k in ["inicio", "borde", "vigencia", "cerca", "recién contratada", "recien contratada", "póliza nueva", "poliza nueva", "primeros días", "primeros dias"]):
         question_type = "Q9"
         claims = db.query(Siniestro).filter(Siniestro.dias_desde_inicio_poliza <= 30).all()
         res = []
@@ -202,7 +202,7 @@ def process_chatbot_query(question: str, db: Session, profile_id: str = None) ->
         raw_data = "\n".join(res) if res else "No hay siniestros al inicio de vigencia de pólizas."
 
     # Q10: Patrones comunes / repetidos
-    elif any(k in q_clean for k in ["patron", "patrón", "patrones"]) and any(k in q_clean for k in ["repiten", "repetidos", "comunes"]):
+    elif any(k in q_clean for k in ["patron", "patrón", "patrones", "patrón de fraude", "como defraudan", "cómo defraudan", "modus operandi", "modus", "estafa", "estafas", "fraudes comunes", "tipo de fraude", "tipos de fraude"]):
         question_type = "Q10"
         from collections import Counter
         claims = db.query(Siniestro).filter(Siniestro.fraud_score > 40).all()
@@ -218,7 +218,7 @@ def process_chatbot_query(question: str, db: Session, profile_id: str = None) ->
         raw_data = "\n".join(res)
 
     # Q11: Resumen ejecutivo casos críticos
-    elif any(k in q_clean for k in ["resumen", "resumen ejecutivo"]) and any(k in q_clean for k in ["crítico", "critico", "críticos", "criticos"]):
+    elif any(k in q_clean for k in ["resumen", "resumen ejecutivo", "resumen general", "cómo va", "como va", "estado general", "panorama", "situación actual", "situacion actual", "cómo estamos", "como estamos"]):
         question_type = "Q11"
         claims = db.query(Siniestro).filter(Siniestro.fraud_classification == "Rojo").all()
         total_reclamado = sum(c.monto_reclamado or 0 for c in claims)
@@ -234,7 +234,7 @@ def process_chatbot_query(question: str, db: Session, profile_id: str = None) ->
         raw_data = "\n".join(res)
 
     # Q12: Recomienda qué casos revisar primero
-    elif any(k in q_clean for k in ["recomienda", "recomendar", "revisar", "prioridad"]):
+    elif any(k in q_clean for k in ["recomienda", "recomendar", "revisar", "prioridad", "qué hago", "que hago", "por dónde empiezo", "por donde empiezo", "qué reviso primero", "que reviso primero", "dónde empiezo", "donde empiezo", "qué debo hacer", "que debo hacer"]):
         question_type = "Q12"
         claims = db.query(Siniestro).order_by(Siniestro.fraud_score.desc()).limit(5).all()
         res = []

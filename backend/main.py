@@ -1218,6 +1218,57 @@ def _ensure_vehiculo_for_claim(scope: ProfileScope, db: Session, poliza_id: str,
     return veh
 
 
+def _resolve_or_create_claim_from_document_ref(
+    scope: ProfileScope,
+    db: Session,
+    ref: str,
+    *,
+    insured_name: str = "",
+    policy_number: str = "",
+    plate: str = "",
+    brand: str = "",
+    model: str = "",
+    year=None,
+) -> Siniestro | None:
+    """Resuelve SIN-* desde el PDF; si no existe, crea un placeholder trazable."""
+    ref = (ref or "").replace(" ", "").strip().upper()
+    if not ref:
+        return None
+
+    siniestro = scope.siniestros().filter(Siniestro.id_poliza == ref).first()
+    if not siniestro:
+        m = re.search(r"(\d+)$", ref)
+        if m:
+            try:
+                siniestro = scope.siniestros().filter(Siniestro.id_siniestro == int(m.group(1))).first()
+            except ValueError:
+                siniestro = None
+    if siniestro:
+        return siniestro
+
+    insured_id = (insured_name or f"ASEG-{ref}")[:50]
+    poliza_id = (policy_number or ref)[:20]
+    poliza = _ensure_poliza_for_claim(scope, db, poliza_id, insured_id, insured_name or insured_id, Ramo.VEHICULOS)
+    veh = _ensure_vehiculo_for_claim(scope, db, poliza.id_poliza, plate, brand, model, year)
+    siniestro = Siniestro(
+        profile_id=scope.profile_id,
+        id_poliza=poliza.id_poliza,
+        id_asegurado=insured_id,
+        ramo=Ramo.VEHICULOS,
+        cobertura=Cobertura.CHOQUE,
+        estado=EstadoSiniestro.RESERVA,
+        fecha_ocurrencia=datetime.utcnow(),
+        fecha_reporte=datetime.utcnow(),
+        monto_reclamado=0.0,
+        sucursal="Importado desde PDF",
+        descripcion=f"Siniestro creado automáticamente desde documento {ref}.",
+        vehiculo_id=veh.id if veh else None,
+    )
+    db.add(siniestro)
+    db.flush()
+    return siniestro
+
+
 def _siniestro_to_dict(s: Siniestro, scope: ProfileScope) -> dict:
     invoices = scope.invoices().filter(Invoice.siniestro_id == s.id_siniestro).all()
     audit = scope.audit_results().filter(AuditResult.siniestro_id == s.id_siniestro).first()
@@ -1714,6 +1765,85 @@ def _declaration_to_dict(d: AccidentDeclaration) -> dict:
     }
 
 
+@app.post("/api/claims/auto/declaration", status_code=201)
+async def upload_claim_declaration_auto(
+    file: UploadFile = File(...),
+    scope: ProfileScope = Depends(get_scope),
+    db: Session = Depends(get_db),
+):
+    """Carga declaración sin selector: resuelve/crea el siniestro desde el PDF."""
+    from backend.declaration_extractor import extract_declaration_from_pdf
+    scope.require_role("operaciones")
+    scope.require_write("siniestros")
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Solo se aceptan archivos PDF.")
+    pdf_bytes = await file.read()
+    if len(pdf_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="PDF demasiado grande (máx 10MB).")
+    try:
+        data = extract_declaration_from_pdf(pdf_bytes)
+    except ImportError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"No se pudo parsear la declaración: {str(e)}")
+
+    siniestro = _resolve_or_create_claim_from_document_ref(
+        scope, db, data.get("siniestro_ref") or "",
+        insured_name=data.get("asegurado_nombre") or data.get("conductor_nombre") or "",
+        policy_number=data.get("poliza_numero") or "",
+        plate=data.get("veh_placa") or "",
+        brand=data.get("veh_marca") or "",
+        model=data.get("veh_modelo") or "",
+    )
+    if not siniestro:
+        raise HTTPException(status_code=409, detail="No se pudo identificar el siniestro desde el PDF. Selecciona el siniestro destino manualmente.")
+
+    existing = db.query(AccidentDeclaration).filter(AccidentDeclaration.siniestro_id == siniestro.id_siniestro).first()
+    if existing:
+        db.delete(existing)
+        db.flush()
+
+    def _parse_iso(s):
+        if not s:
+            return None
+        try:
+            return datetime.fromisoformat(s)
+        except ValueError:
+            return None
+
+    decl = AccidentDeclaration(
+        siniestro_id=siniestro.id_siniestro,
+        profile_id=scope.profile_id,
+        doc_id=data.get("doc_id") or None,
+        siniestro_ref=(data.get("siniestro_ref") or "").upper() or None,
+        modo=data.get("modo") or None,
+        fecha_firma=_parse_iso(data.get("fecha_firma")),
+        asegurado_nombre=data.get("asegurado_nombre") or None,
+        asegurado_email=data.get("asegurado_email") or None,
+        asegurado_direccion=data.get("asegurado_direccion") or None,
+        asegurado_telefono=data.get("asegurado_telefono") or None,
+        poliza_numero=data.get("poliza_numero") or None,
+        veh_marca=data.get("veh_marca") or None,
+        veh_modelo=data.get("veh_modelo") or None,
+        veh_tipo=data.get("veh_tipo") or None,
+        veh_color=data.get("veh_color") or None,
+        veh_placa=(data.get("veh_placa") or "").upper() or None,
+        veh_detalle_danos=data.get("veh_detalle_danos") or None,
+        accidente_lugar=data.get("accidente_lugar") or None,
+        accidente_fecha=_parse_iso(data.get("accidente_fecha")),
+        accidente_hora=data.get("accidente_hora") or None,
+        accidente_descripcion=data.get("accidente_descripcion") or None,
+        conductor_nombre=data.get("conductor_nombre") or None,
+        conductor_cedula=data.get("conductor_cedula") or None,
+        raw_extract=json.dumps(data, default=str),
+        source_filename=file.filename,
+    )
+    db.add(decl)
+    db.commit()
+    db.refresh(decl)
+    return {"status": "ok", "auto_resolved": True, "claim": _siniestro_to_dict(siniestro, scope), "declaration": _declaration_to_dict(decl), "warnings": [], "extracted": data, "initial_audit": None}
+
+
 @app.post("/api/claims/{claim_id}/declaration", status_code=201)
 async def upload_claim_declaration(
     claim_id: int,
@@ -1845,13 +1975,9 @@ async def upload_claim_declaration(
     db.commit()
     db.refresh(decl)
 
-    # Disparo etapa 2 — Auditoría Inicial de Fraude
+    # La auditoría automática predeterminada ocurre con IA cuando exista factura.
+    # No ejecutamos reglas al cargar únicamente la declaración.
     initial_audit_result = None
-    try:
-        agent = AuditAgent(db, profile_id=scope.profile_id)
-        initial_audit_result = agent.audit_initial(claim_id)
-    except Exception as e:
-        warnings.append(f"Auditoría inicial no se ejecutó automáticamente: {str(e)[:120]}")
 
     return {
         "status": "ok",
@@ -1941,6 +2067,94 @@ def _police_report_to_dict(pr: PoliceReport) -> dict:
         "source_filename": pr.source_filename,
         "uploaded_at": pr.uploaded_at.isoformat() if pr.uploaded_at else None,
     }
+
+
+@app.post("/api/claims/auto/police-report", status_code=201)
+async def upload_claim_police_report_auto(
+    file: UploadFile = File(...),
+    scope: ProfileScope = Depends(get_scope),
+    db: Session = Depends(get_db),
+):
+    """Carga parte policial sin selector: resuelve el siniestro desde el PDF."""
+    from backend.police_report_extractor import extract_police_report_from_pdf
+    scope.require_role("operaciones")
+    scope.require_write("siniestros")
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Solo se aceptan archivos PDF.")
+    pdf_bytes = await file.read()
+    if len(pdf_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="PDF demasiado grande (máx 10MB).")
+    try:
+        data = extract_police_report_from_pdf(pdf_bytes)
+    except ImportError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"No se pudo parsear el parte policial: {str(e)}")
+
+    siniestro = _resolve_or_create_claim_from_document_ref(
+        scope, db, data.get("siniestro_ref") or "",
+        insured_name=data.get("p1_nombre") or "",
+        plate=data.get("veh_placa") or "",
+        brand=data.get("veh_marca") or "",
+        model=data.get("veh_modelo") or "",
+        year=data.get("veh_anio"),
+    )
+    if not siniestro:
+        raise HTTPException(status_code=409, detail="No se pudo identificar el siniestro desde el PDF. Selecciona el siniestro destino manualmente.")
+    decl = db.query(AccidentDeclaration).filter(AccidentDeclaration.siniestro_id == siniestro.id_siniestro).first()
+    if not decl:
+        raise HTTPException(status_code=409, detail="Etapa fuera de orden: cargue primero la Declaración de Accidente para ese siniestro.")
+
+    existing = db.query(PoliceReport).filter(PoliceReport.siniestro_id == siniestro.id_siniestro).first()
+    if existing:
+        db.delete(existing)
+        db.flush()
+
+    def _parse_iso(s):
+        if not s:
+            return None
+        try:
+            return datetime.fromisoformat(s)
+        except ValueError:
+            return None
+
+    pr = PoliceReport(
+        siniestro_id=siniestro.id_siniestro,
+        profile_id=scope.profile_id,
+        doc_id=data.get("doc_id") or None,
+        siniestro_ref=(data.get("siniestro_ref") or "").upper() or None,
+        parte_no=data.get("parte_no") or None,
+        fecha_elaboracion=_parse_iso(data.get("fecha_elaboracion")),
+        fecha_hecho=_parse_iso(data.get("fecha_hecho")),
+        hora_aproximada=data.get("hora_aproximada") or None,
+        tipos_accidente=",".join(data.get("tipos_accidente") or []) or None,
+        circunstancias=data.get("circunstancias") or None,
+        p1_nombre=data.get("p1_nombre") or None,
+        p1_cedula=data.get("p1_cedula") or None,
+        veh_placa=(data.get("veh_placa") or "").upper().replace(" ", "") or None,
+        veh_marca=data.get("veh_marca") or None,
+        veh_modelo=data.get("veh_modelo") or None,
+        veh_anio=data.get("veh_anio"),
+        raw_extract=json.dumps(data, default=str),
+        source_filename=file.filename,
+    )
+    db.add(pr)
+    db.commit()
+    db.refresh(pr)
+
+    post_audit_result = None
+    invoice_for_audit = scope.invoices().filter(Invoice.siniestro_id == siniestro.id_siniestro).first()
+    if invoice_for_audit:
+        try:
+            post_audit_result = _run_deepseek_audit(invoice_for_audit.id, scope, db)
+        except HTTPException as e:
+            if e.status_code in (500, 503):
+                post_audit_result = AuditAgent(db, profile_id=scope.profile_id).audit_invoice(invoice_for_audit.id)
+                post_audit_result["audit_engine"] = "rules"
+                post_audit_result["fallback_reason"] = str(e.detail)[:200]
+            else:
+                raise
+    return {"status": "ok", "auto_resolved": True, "claim": _siniestro_to_dict(siniestro, scope), "police_report": _police_report_to_dict(pr), "warnings": [], "extracted": data, "post_payment_audit": post_audit_result}
 
 
 @app.post("/api/claims/{claim_id}/police-report", status_code=201)
@@ -2090,16 +2304,28 @@ async def upload_claim_police_report(
     db.commit()
     db.refresh(pr)
 
-    # Si ya hay facturas para este siniestro, disparar etapa 5 (Post-Pago).
-    # Si no hay facturas todavía, el post-payment se disparará al cargarlas.
+    # Si ya hay facturas para este siniestro, auditar con IA por defecto.
+    # Reglas (stage post_payment) como fallback si DeepSeek no esta disponible.
     post_audit_result = None
-    has_invoice = scope.invoices().filter(Invoice.siniestro_id == claim_id).first() is not None
-    if has_invoice:
+    invoice_for_audit = scope.invoices().filter(Invoice.siniestro_id == claim_id).first()
+    if invoice_for_audit:
         try:
-            agent = AuditAgent(db, profile_id=scope.profile_id)
-            post_audit_result = agent.audit_post_payment(claim_id)
+            post_audit_result = _run_deepseek_audit(invoice_for_audit.id, scope, db)
+        except HTTPException as e:
+            if e.status_code in (500, 503):
+                agent = AuditAgent(db, profile_id=scope.profile_id)
+                post_audit_result = agent.audit_post_payment(claim_id, invoice_for_audit.id)
+                post_audit_result["audit_engine"] = "rules"
+                post_audit_result["fallback_reason"] = str(e.detail)[:200]
+                warnings.append("DeepSeek no disponible; se usó fallback de reglas post-pago.")
+            else:
+                raise
         except Exception as e:
-            warnings.append(f"Auditoría post-pago no se ejecutó automáticamente: {str(e)[:120]}")
+            agent = AuditAgent(db, profile_id=scope.profile_id)
+            post_audit_result = agent.audit_post_payment(claim_id, invoice_for_audit.id)
+            post_audit_result["audit_engine"] = "rules"
+            post_audit_result["fallback_reason"] = str(e)[:200]
+            warnings.append("DeepSeek no disponible; se usó fallback de reglas post-pago.")
 
     return {
         "status": "ok",
@@ -2869,10 +3095,21 @@ async def audit_pdf_upload(
                 ).first() is not None
                 pr_required_local, _ = _req_pr_existing(existing_claim, decl_obj)
                 if decl_obj and (has_pr or not pr_required_local):
-                    agent = AuditAgent(db, profile_id=scope.profile_id)
-                    post_audit_result = agent.audit_post_payment(
-                        existing_claim.id_siniestro, invoice_id=existing.id,
-                    )
+                    try:
+                        post_audit_result = _run_deepseek_audit(existing.id, scope, db)
+                    except HTTPException as e:
+                        if e.status_code in (500, 503):
+                            agent = AuditAgent(db, profile_id=scope.profile_id)
+                            post_audit_result = agent.audit_post_payment(existing_claim.id_siniestro, existing.id)
+                            post_audit_result["audit_engine"] = "rules"
+                            post_audit_result["fallback_reason"] = str(e.detail)[:200]
+                        else:
+                            raise
+                    except Exception as e:
+                        agent = AuditAgent(db, profile_id=scope.profile_id)
+                        post_audit_result = agent.audit_post_payment(existing_claim.id_siniestro, existing.id)
+                        post_audit_result["audit_engine"] = "rules"
+                        post_audit_result["fallback_reason"] = str(e)[:200]
         except Exception as e:
             post_audit_result = {"error": str(e)[:200]}
         db.rollback()
@@ -2927,8 +3164,7 @@ async def audit_pdf_upload(
         ))
     db.commit()
 
-    # Disparo etapa 5 — Auditoría Post-Pago. Requiere declaración. El parte
-    # policial se exige sólo si la política de gravedad lo demanda.
+    # Auditoria por defecto con IA. Reglas (stage post_payment) como fallback.
     post_audit_result = None
     from backend.police_report_policy import requires_police_report as _req_pr
     decl_obj = db.query(AccidentDeclaration).filter(
@@ -2941,13 +3177,20 @@ async def audit_pdf_upload(
     pr_required_local, _ = _req_pr(siniestro, decl_obj)
     if has_decl and (has_pr or not pr_required_local):
         try:
-            agent = AuditAgent(db, profile_id=scope.profile_id)
-            post_audit_result = agent.audit_post_payment(
-                siniestro.id_siniestro, invoice_id=invoice.id,
-            )
+            post_audit_result = _run_deepseek_audit(invoice.id, scope, db)
+        except HTTPException as e:
+            if e.status_code in (500, 503):
+                agent = AuditAgent(db, profile_id=scope.profile_id)
+                post_audit_result = agent.audit_post_payment(siniestro.id_siniestro, invoice.id)
+                post_audit_result["audit_engine"] = "rules"
+                post_audit_result["fallback_reason"] = str(e.detail)[:200]
+            else:
+                raise
         except Exception as e:
-            # No bloquear la carga si la auditoría falla; queda como pendiente.
-            post_audit_result = {"error": str(e)[:200]}
+            agent = AuditAgent(db, profile_id=scope.profile_id)
+            post_audit_result = agent.audit_post_payment(siniestro.id_siniestro, invoice.id)
+            post_audit_result["audit_engine"] = "rules"
+            post_audit_result["fallback_reason"] = str(e)[:200]
 
     return {
         "filename": file.filename, "invoice_id": invoice.id,
@@ -2955,7 +3198,8 @@ async def audit_pdf_upload(
         "is_test": bool(invoice.is_test),
         "post_payment_audit": post_audit_result,
         "message": "Factura cargada" + (
-            " y auditoría post-pago ejecutada." if post_audit_result and not post_audit_result.get("error")
+            " y auditoría IA ejecutada." if post_audit_result and not post_audit_result.get("error") and not post_audit_result.get("fallback_reason")
+            else " y auditoría por reglas ejecutada como fallback." if post_audit_result and post_audit_result.get("fallback_reason")
             else " y añadida a la cola de auditoría."
         ),
     }
@@ -3004,6 +3248,332 @@ def generate_random_test_pdf(
         return {"status": "success", "count": len(results), "files": results}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+
+class DemoCompleteCaseRequest(BaseModel):
+    scenario: str = "mixed"
+
+
+class DemoDocumentsRequest(BaseModel):
+    document_type: str = "all"  # all | declaration | police | invoice
+    scenario: str = "mixed"     # limpia | sobrecobro | fraude | mixed
+
+
+def _write_demo_document_pdf(filename: str, title: str, rows: list[tuple[str, str]]) -> str:
+    from backend.test_invoice_generator import OUTPUT_DIR_DEFAULT
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib import colors
+
+    os.makedirs(OUTPUT_DIR_DEFAULT, exist_ok=True)
+    path = os.path.join(OUTPUT_DIR_DEFAULT, filename)
+    styles = getSampleStyleSheet()
+    doc = SimpleDocTemplate(path, pagesize=letter, leftMargin=42, rightMargin=42, topMargin=42, bottomMargin=42)
+    story = [Paragraph(title, styles["Title"]), Spacer(1, 14)]
+    table = Table([[k, v] for k, v in rows], colWidths=[170, 330])
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f1f5f9")),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cbd5e1")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+    ]))
+    story.append(table)
+    story.append(Spacer(1, 16))
+    story.append(Paragraph("DOCUMENTO SINTÉTICO PARA DEMO - Hackathon 2026", styles["Italic"]))
+    doc.build(story)
+    return path
+
+
+def _generate_demo_declaration_pdf(claim_ref: str, stamp: str) -> str:
+    filename = f"demo_declaracion_{claim_ref}_{stamp}.pdf"
+    _write_demo_document_pdf(filename, "Declaración de Accidente - Demo", [
+        ("Doc ID", f"DOC-DEMO-{stamp[-6:]}"),
+        ("Siniestro", claim_ref),
+        ("Modo", "Digital"),
+        ("Asegurado", "Cliente Demo Hackathon"),
+        ("Correo electrónico", "demo@aseguradora.local"),
+        ("Dirección", "Av. Amazonas N34-451 y Atahualpa, Quito"),
+        ("Teléfono", "0999999999"),
+        ("Póliza", f"POL-DEMO-{stamp[-8:]}"),
+        ("Marca", "TOYOTA"),
+        ("Modelo", "COROLLA"),
+        ("Tipo", "Automóvil"),
+        ("Color", "Gris"),
+        ("Placa", "DEM-2026"),
+        ("Detalle de daños", "Daño frontal, revisión de guardachoque, radiador y faros."),
+        ("Lugar", "Av. República y Naciones Unidas, Quito"),
+        ("Fecha", datetime.utcnow().date().isoformat()),
+        ("Hora", "09:35"),
+        ("Descripción", "Colisión frontal reportada por el asegurado."),
+    ])
+    return filename
+
+
+def _generate_demo_police_pdf(claim_ref: str, stamp: str) -> str:
+    filename = f"demo_parte_policial_{claim_ref}_{stamp}.pdf"
+    _write_demo_document_pdf(filename, "Parte Policial - Demo", [
+        ("Doc ID", f"DOC-PP-{stamp[-6:]}"),
+        ("Siniestro", claim_ref),
+        ("Parte No.", f"PP-DEMO-{stamp[-6:]}"),
+        ("Fecha hecho", datetime.utcnow().date().isoformat()),
+        ("Hora aproximada", "09:35"),
+        ("Tipo", "Choque Frontal"),
+        ("Placa", "DEM-2026"),
+        ("Vehículo", "TOYOTA COROLLA 2022"),
+        ("Circunstancias", "Parte policial sintético coherente con la declaración para demo final."),
+    ])
+    return filename
+
+
+@app.post("/api/demo/documents", status_code=201)
+def generate_demo_documents(
+    payload: DemoDocumentsRequest,
+    scope: ProfileScope = Depends(get_scope),
+):
+    """Genera PDFs demo para descarga/carga manual paso a paso."""
+    from backend.test_invoice_generator import generate_random_invoice
+
+    doc_type = (payload.document_type or "all").strip().lower()
+    scenario = (payload.scenario or "mixed").strip().lower()
+    valid_doc_types = {"all", "declaration", "police", "invoice"}
+    valid_scenarios = {"limpia", "sobrecobro", "fraude", "mixed"}
+    if doc_type not in valid_doc_types:
+        raise HTTPException(status_code=400, detail=f"document_type inválido. Use: {sorted(valid_doc_types)}")
+    if scenario not in valid_scenarios:
+        raise HTTPException(status_code=400, detail=f"scenario inválido. Use: {sorted(valid_scenarios)}")
+
+    stamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    claim_ref = f"SIN-{stamp[-6:]}"
+    files = []
+
+    if doc_type in ("all", "declaration"):
+        filename = _generate_demo_declaration_pdf(claim_ref, stamp)
+        files.append({"type": "declaration", "label": "Declaración de accidente", "filename": filename, "url": f"/api/test-pdfs/{filename}"})
+    if doc_type in ("all", "police"):
+        filename = _generate_demo_police_pdf(claim_ref, stamp)
+        files.append({"type": "police", "label": "Parte policial", "filename": filename, "url": f"/api/test-pdfs/{filename}"})
+    if doc_type in ("all", "invoice"):
+        invoice = generate_random_invoice(scenario, claim_override={
+            "num": claim_ref,
+            "type": "choque_frontal",
+            "plate": "DEM-2026",
+            "vehicle": "TOYOTA COROLLA 2022 - GRIS",
+            "policy": f"POL-DEMO-{stamp[-8:]}",
+        })
+        files.append({"type": "invoice", "label": "Factura", "filename": invoice["filename"], "url": f"/api/test-pdfs/{invoice['filename']}", "scenario": scenario, "expected_finding": invoice.get("expected_finding")})
+
+    return {"status": "success", "mode": "manual", "claim_ref": claim_ref, "scenario": scenario, "files": files}
+
+
+@app.post("/api/demo/complete-case", status_code=201)
+def generate_demo_complete_case(
+    payload: DemoCompleteCaseRequest,
+    scope: ProfileScope = Depends(get_scope),
+    db: Session = Depends(get_db),
+):
+    """Genera un expediente completo portable para la demo final.
+
+    Crea: siniestro + declaración + factura + parte policial, y ejecuta
+    auditoría inicial y post-pago. No depende de carpetas externas del PC.
+    """
+    from datetime import timedelta
+    from backend.test_invoice_generator import generate_random_invoice
+
+    scope.require_role("operaciones")
+    for table in ("siniestros", "polizas", "asegurados", "workshops", "invoices", "audit_results"):
+        scope.require_write(table)
+
+    scenario = (payload.scenario or "mixed").strip().lower()
+    valid = {"limpia", "sobrecobro", "fraude", "mixed"}
+    if scenario not in valid:
+        raise HTTPException(status_code=400, detail=f"scenario inválido. Use: {sorted(valid)}")
+
+    invoice_meta = generate_random_invoice(scenario)
+    now = datetime.utcnow()
+    stamp = now.strftime("%Y%m%d%H%M%S")
+    plate = (invoice_meta.get("plate") or f"DEM-{stamp[-4:]}").upper()
+    vehicle_raw = invoice_meta.get("vehicle") or "TOYOTA COROLLA 2022 - GRIS"
+    vehicle_parts = vehicle_raw.split("-")[0].strip().split()
+    brand = vehicle_parts[0] if vehicle_parts else "TOYOTA"
+    year = next((int(p) for p in vehicle_parts if p.isdigit() and len(p) == 4), 2022)
+    model = " ".join([p for p in vehicle_parts[1:] if not (p.isdigit() and len(p) == 4)]) or "COROLLA"
+
+    insured_id = f"DEMO-{stamp[-8:]}"
+    insured_name = invoice_meta.get("client_name") or "Cliente Demo Hackathon"
+    policy_number = f"POL-DEMO-{stamp[-8:]}"
+    poliza = _ensure_poliza_for_claim(scope, db, policy_number, insured_id, insured_name, Ramo.VEHICULOS)
+    veh = _ensure_vehiculo_for_claim(scope, db, poliza.id_poliza, plate, brand, model, year)
+
+    siniestro = Siniestro(
+        profile_id=scope.profile_id,
+        id_poliza=poliza.id_poliza,
+        id_asegurado=insured_id,
+        ramo=Ramo.VEHICULOS,
+        cobertura=Cobertura.CHOQUE,
+        estado=EstadoSiniestro.RESERVA,
+        fecha_ocurrencia=now - timedelta(days=2),
+        fecha_reporte=now,
+        monto_reclamado=float(invoice_meta.get("total") or 0),
+        monto_estimado=float(invoice_meta.get("subtotal") or 0),
+        monto_pagado=0.0,
+        sucursal="Demo Final",
+        descripcion=f"Expediente demo completo generado automáticamente ({scenario}).",
+        documentos_completos=1,
+        beneficiario=insured_name,
+        vehiculo_id=veh.id if veh else None,
+    )
+    db.add(siniestro)
+    db.flush()
+
+    claim_ref = f"SIN-{siniestro.id_siniestro:04d}"
+    declaration_filename = f"demo_declaracion_{claim_ref}_{stamp}.pdf"
+    police_filename = f"demo_parte_policial_{claim_ref}_{stamp}.pdf"
+    _write_demo_document_pdf(declaration_filename, "Declaración de Accidente - Demo", [
+        ("Doc ID", f"DOC-DEMO-{stamp[-6:]}"),
+        ("Siniestro", claim_ref),
+        ("Asegurado", insured_name),
+        ("Póliza", policy_number),
+        ("Vehículo", vehicle_raw),
+        ("Placa", plate),
+        ("Fecha accidente", (now - timedelta(days=2)).date().isoformat()),
+        ("Descripción", "Colisión frontal reportada por el asegurado. Vehículo detenido para inspección."),
+    ])
+    _write_demo_document_pdf(police_filename, "Parte Policial - Demo", [
+        ("Doc ID", f"DOC-PP-{stamp[-6:]}"),
+        ("Siniestro", claim_ref),
+        ("Parte No.", f"PP-DEMO-{stamp[-6:]}"),
+        ("Fecha hecho", (now - timedelta(days=2)).date().isoformat()),
+        ("Tipo", "Choque Frontal"),
+        ("Placa", plate),
+        ("Circunstancias", "Parte policial sintético coherente con la declaración para demo final."),
+    ])
+
+    decl = AccidentDeclaration(
+        siniestro_id=siniestro.id_siniestro,
+        profile_id=scope.profile_id,
+        doc_id=f"DOC-DEMO-{stamp[-6:]}",
+        siniestro_ref=claim_ref,
+        modo="Digital",
+        fecha_firma=now,
+        asegurado_nombre=insured_name,
+        asegurado_email="demo@aseguradora.local",
+        asegurado_direccion="Av. Amazonas N34-451 y Atahualpa, Quito",
+        asegurado_telefono="0999999999",
+        poliza_numero=policy_number,
+        veh_marca=brand,
+        veh_modelo=model,
+        veh_tipo="Automóvil",
+        veh_color="Gris",
+        veh_placa=plate,
+        veh_detalle_danos="Daño frontal, revisión de guardachoque, radiador y faros.",
+        accidente_lugar="Av. República y Naciones Unidas, Quito",
+        accidente_fecha=now - timedelta(days=2),
+        accidente_hora="09:35",
+        accidente_descripcion="El asegurado reporta choque frontal durante circulación urbana.",
+        accidente_responsable="Por determinar",
+        conductor_nombre=insured_name,
+        conductor_cedula=invoice_meta.get("client_id") or "0999999999",
+        raw_extract=json.dumps({"demo": True, "scenario": scenario, "siniestro_ref": claim_ref}, ensure_ascii=False),
+        source_filename=declaration_filename,
+    )
+    db.add(decl)
+    db.flush()
+
+    workshop = scope.get_workshop_by_ruc(invoice_meta["ruc"])
+    if not workshop:
+        workshop = Workshop(
+            profile_id=scope.profile_id,
+            name=invoice_meta.get("workshop_name") or invoice_meta.get("workshop_comercial") or "Taller Demo",
+            ruc=invoice_meta["ruc"],
+            address="Dirección demo",
+            phone="0999999999",
+            email="demo@taller.local",
+        )
+        db.add(workshop)
+        db.flush()
+
+    issue_date = _parse_incident_date(invoice_meta.get("issue_date")) or now
+    invoice = Invoice(
+        profile_id=scope.profile_id,
+        invoice_number=invoice_meta["invoice_number"],
+        siniestro_id=siniestro.id_siniestro,
+        workshop_id=workshop.id,
+        issue_date=issue_date,
+        subtotal=float(invoice_meta.get("subtotal") or 0),
+        iva=round(float(invoice_meta.get("total") or 0) - float(invoice_meta.get("subtotal") or 0), 2),
+        total=float(invoice_meta.get("total") or 0),
+        raw_data=json.dumps(invoice_meta, ensure_ascii=False, default=str),
+        is_test=1,
+    )
+    db.add(invoice)
+    db.flush()
+    for item in invoice_meta.get("items_preview") or []:
+        qty = float(item.get("quantity") or 1)
+        unit = float(item.get("unit_price") or 0)
+        db.add(InvoiceItem(
+            invoice_id=invoice.id,
+            code=item.get("code") or "",
+            description=item.get("description") or "Item demo",
+            category="repuesto",
+            quantity=qty,
+            unit_price=unit,
+            total_price=round(qty * unit, 2),
+        ))
+
+    police = PoliceReport(
+        siniestro_id=siniestro.id_siniestro,
+        profile_id=scope.profile_id,
+        doc_id=f"DOC-PP-{stamp[-6:]}",
+        siniestro_ref=claim_ref,
+        parte_no=f"PP-DEMO-{stamp[-6:]}",
+        fecha_elaboracion=now,
+        fecha_hecho=now - timedelta(days=2),
+        hora_aproximada="09:35",
+        clasificacion_tipo="Tránsito",
+        tipos_accidente="choque_frontal",
+        circunstancias="Parte policial sintético coherente con declaración y factura.",
+        p1_nombre=insured_name,
+        p1_cedula=invoice_meta.get("client_id") or "0999999999",
+        veh_placa=plate,
+        veh_marca=brand,
+        veh_modelo=model,
+        veh_anio=year,
+        raw_extract=json.dumps({"demo": True, "scenario": scenario, "siniestro_ref": claim_ref}, ensure_ascii=False),
+        source_filename=police_filename,
+    )
+    db.add(police)
+    db.commit()
+
+    # Etapa 3 — Auditoría Inicial (automatica sobre declaracion)
+    initial_audit = None
+    try:
+        agent = AuditAgent(db, profile_id=scope.profile_id)
+        initial_audit = agent.audit_initial(siniestro.id_siniestro)
+    except Exception as e:
+        initial_audit = {"error": str(e)[:200]}
+
+    # Etapa 5 — Auditoría Post-Pago (automatica: 10 reglas cruzadas)
+    post_payment_audit = None
+    try:
+        agent = AuditAgent(db, profile_id=scope.profile_id)
+        post_payment_audit = agent.audit_post_payment(siniestro.id_siniestro, invoice.id)
+    except Exception as e:
+        post_payment_audit = {"error": str(e)[:200]}
+
+    return {
+        "status": "success",
+        "scenario": scenario,
+        "claim": _siniestro_to_dict(siniestro, scope),
+        "declaration_file": declaration_filename,
+        "police_report_file": police_filename,
+        "invoice_file": invoice_meta.get("filename"),
+        "invoice": {"id": invoice.id, "invoice_number": invoice.invoice_number, "total": invoice.total},
+        "initial_audit": initial_audit,
+        "post_payment_audit": post_payment_audit,
+    }
 
 
 @app.get("/api/test-pdfs/{filename:path}")

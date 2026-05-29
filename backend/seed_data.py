@@ -66,8 +66,6 @@ def seed_database():
     # DEBE ejecutarse ANTES de crear los 5 siniestros originales para respetar FKs
     from backend.seed_fraud_data import seed_fraud_data
     seed_fraud_data(db)
-    db.close()
-    return
 
     now = datetime.utcnow()
     # --- SINIESTRO 1: Limpio ---
@@ -166,9 +164,14 @@ def seed_database():
         InvoiceItem(invoice_id=inv5.id, code="MAT-LIJ01", description="Kit lijas y masilla", category="material", quantity=2, unit_price=32.00, total_price=64.00),
         InvoiceItem(invoice_id=inv5.id, code="MO-PIN01", description="Mano de obra pintura (hora)", category="mano_obra", quantity=6, unit_price=21.00, total_price=126.00),
     ])
-    db.commit()
-    db.close()
-    print("Base de datos inicializada con datos demo.")
+    try:
+        db.commit()
+        print("Base de datos inicializada con datos demo.")
+    except Exception as e:
+        db.rollback()
+        print(f"Error en seed de siniestros originales: {e}")
+    finally:
+        db.close()
 
 
 if __name__ == "__main__":

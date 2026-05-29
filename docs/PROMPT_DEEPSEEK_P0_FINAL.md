@@ -159,7 +159,7 @@ SIN-4: score=37.76 (Verde) | Beneficiario recurrente — parcialmente detectado
 | `backend/seed_data.py` | Modificado — orden de seed corregido, llama a seed_fraud_data antes de siniestros originales |
 | `backend/database.py` | Modificado — habilitado PRAGMA foreign_keys=ON |
 | `backend/main.py` | Modificado — imports actualizados, nuevos endpoints de fraud scoring |
-| `docs/MATRIZ_CUMPLIMIENTO_RETO.md` | Creado — matriz completa con estados CUMPLE/PARCIAL/NO CUMPLE |
+| `docs/MATRIZ_CUMPLIMIENTO_RETO.md` | Actualizado — matriz final de demo funcional con riesgos residuales documentados |
 | `docs/PROMPT_DEEPSEEK_P0_FINAL.md` | Creado — este documento |
 
 ---

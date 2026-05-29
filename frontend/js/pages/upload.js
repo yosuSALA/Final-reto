@@ -6,7 +6,7 @@ let uploadInFlight = false;
 
 export async function loadUploadPage() {
     const claims = await apiFetch("/claims") || [];
-    // Solo siniestros que aÃºn no tienen factura cargada
+    // Solo siniestros que aún no tienen factura cargada
     renderUploadPage(claims);
 }
 
@@ -14,14 +14,14 @@ function renderUploadPage(claims, totalClaims = claims.length) {
     const page = document.getElementById("page-upload");
     const docType = state.uploadDocType || "declaration";
     const docTitle = {
-        declaration: "Declaracion de Accidente",
+        declaration: "Declaración de Accidente",
         police: "Parte Policial",
         invoice: "Factura",
     }[docType] || "Documento";
     page.innerHTML = `
         <div class="page-header">
             <h1>Subir Documento PDF</h1>
-            <p>Arrastra un PDF de factura de taller. La extracciÃ³n es automÃ¡tica y la auditorÃ­a se lanza desde la cola de pendientes.</p>
+            <p>Arrastra un PDF de factura de taller. La extracción es automática y la auditoría se lanza desde la cola de pendientes.</p>
         </div>
 
         <div class="grid-3-1">
@@ -31,22 +31,23 @@ function renderUploadPage(claims, totalClaims = claims.length) {
                     <div style="margin-bottom:14px;">
                         <label style="font-size:0.85rem; color:var(--text-muted); margin-bottom:6px; display:block;">Tipo de documento</label>
                         <select id="upload-doc-type" onchange="setUploadDocType(this.value)" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; outline:none; font-family:inherit;">
-                            <option value="declaration" ${docType === "declaration" ? "selected" : ""}>Declaracion</option>
+                            <option value="declaration" ${docType === "declaration" ? "selected" : ""}>Declaración</option>
                             <option value="police" ${docType === "police" ? "selected" : ""}>Parte Policial</option>
                             <option value="invoice" ${docType === "invoice" ? "selected" : ""}>Factura</option>
                         </select>
                     </div>
                     <div style="margin-bottom:14px;">
-                        <label style="font-size:0.85rem; color:var(--text-muted); margin-bottom:6px; display:block;">Siniestro destino</label>
+                        <label style="font-size:0.85rem; color:var(--text-muted); margin-bottom:6px; display:block;">Siniestro destino <span style="font-size:0.72rem;opacity:0.8;">(opcional)</span></label>
                         <select id="upload-claim-select" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; outline:none; font-family:inherit;">
-                            <option value="">Seleccione un siniestro</option>
+                            <option value="">Detectar automáticamente desde el PDF</option>
                             ${claims.map(c => `<option value="${c.id}" data-claim-number="${c.claim_number}">${c.claim_number} - ${(c.claim_type || "").replace(/_/g, ' ')} - ${c.vehicle_plate || c.insured_name || "N/D"}</option>`).join("")}
                         </select>
+                        <div style="font-size:0.72rem;color:var(--text-muted);margin-top:4px;">Si el documento no trae referencia de siniestro, el sistema te pedirá seleccionarlo.</div>
                     </div>
 
                     <label style="display:${docType === "invoice" ? "flex" : "none"};align-items:center;gap:6px;font-size:0.85rem;color:var(--text-muted);margin-bottom:12px;">
                         <input type="checkbox" id="upload-is-test" ${state.uploadIsTest ? "checked" : ""} onchange="setUploadIsTest(this.checked)">
-                        Marcar como factura de prueba (TEST) â€” se audita pero no afecta el dashboard real
+                        Marcar como factura de prueba (TEST) - se audita pero no afecta el dashboard real
                     </label>
 
                     <div id="dropzone" style="
@@ -63,11 +64,11 @@ function renderUploadPage(claims, totalClaims = claims.length) {
                             <polyline points="17 8 12 3 7 8"/>
                             <line x1="12" y1="3" x2="12" y2="15"/>
                         </svg>
-                        <div style="font-size:1.1rem; font-weight:600; color:var(--text-primary); margin-bottom:6px;">Arrastra el PDF aquÃ­</div>
+                        <div style="font-size:1.1rem; font-weight:600; color:var(--text-primary); margin-bottom:6px;">Arrastra el PDF aquí</div>
                         <div style="color:var(--text-muted); font-size:0.9rem; margin-bottom:14px;">o haz click para seleccionar</div>
                         <button class="btn btn-primary btn-sm" id="choose-file-btn">Elegir Archivo</button>
                         <input type="file" id="upload-file-input" accept="application/pdf,.pdf" style="display:none;">
-                        <div style="margin-top:12px; font-size:0.75rem; color:var(--text-muted);">Solo PDF Â· mÃ¡x 10 MB</div>
+                        <div style="margin-top:12px; font-size:0.75rem; color:var(--text-muted);">Solo PDF · máx 10 MB</div>
                     </div>
 
                     <div id="upload-status" style="margin-top:14px;"></div>
@@ -81,14 +82,29 @@ function renderUploadPage(claims, totalClaims = claims.length) {
                 </div>
                 <div class="card-body">
                     <p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:12px;">
-                        Genera facturas aleatorias con RUC, nÃºmero e items Ãºnicos. Cada click crea una nueva.
+                        Genera PDFs para cargarlos paso a paso, o crea el expediente completo automáticamente con IA.
                     </p>
-                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:14px;">
-                        <button class="btn btn-success btn-sm" onclick="genRandomFactura('limpia')">+ Limpia</button>
-                        <button class="btn btn-warning btn-sm" onclick="genRandomFactura('sobrecobro')">+ Sobrecobro</button>
-                        <button class="btn btn-danger btn-sm" onclick="genRandomFactura('fraude')">+ Fraude</button>
-                        <button class="btn btn-info btn-sm" onclick="genRandomFactura('mixed')" style="background:var(--accent-indigo); color:white;">+ Aleatorio</button>
+                    <div style="border:1px solid rgba(99,102,241,0.25);background:rgba(99,102,241,0.06);border-radius:10px;padding:12px;margin-bottom:14px;">
+                        <div style="font-weight:700;color:var(--accent-indigo);margin-bottom:8px;">Generador de documentos demo</div>
+                        <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:4px;">Qué generar</label>
+                        <select id="demo-doc-type" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;margin-bottom:8px;">
+                            <option value="all">Expediente manual completo (3 PDFs)</option>
+                            <option value="declaration">Solo declaración de accidente</option>
+                            <option value="police">Solo parte policial</option>
+                            <option value="invoice">Solo factura</option>
+                            <option value="auto">Expediente automático con IA</option>
+                        </select>
+                        <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:4px;">Nivel de riesgo de factura</label>
+                        <select id="demo-risk-level" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;margin-bottom:10px;">
+                            <option value="mixed">Aleatorio</option>
+                            <option value="limpia">Limpio</option>
+                            <option value="sobrecobro">Sobrecobro</option>
+                            <option value="fraude">Fraude</option>
+                        </select>
+                        <button class="btn btn-primary btn-sm" id="btn-demo-documents" onclick="generateDemoDocuments()" style="width:100%;">Generar</button>
+                        <div id="demo-documents-status" style="margin-top:8px;font-size:0.8rem;color:var(--text-muted);"></div>
                     </div>
+                    <div id="demo-documents-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;"></div>
                     <div id="generated-list" style="display:flex; flex-direction:column; gap:10px; max-height:520px; overflow-y:auto;">
                         ${renderGeneratedList()}
                     </div>
@@ -102,6 +118,84 @@ function renderUploadPage(claims, totalClaims = claims.length) {
     setupDropzone();
 }
 
+export async function generateDemoDocuments() {
+    const docType = document.getElementById("demo-doc-type")?.value || "all";
+    if (docType === "auto") {
+        await generateCompleteDemoCase();
+        return;
+    }
+    const btn = document.getElementById("btn-demo-documents");
+    const status = document.getElementById("demo-documents-status");
+    const list = document.getElementById("demo-documents-list");
+    const scenario = document.getElementById("demo-risk-level")?.value || "mixed";
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> Generando PDFs...';
+    }
+    if (status) status.textContent = "Generando documentos para carga manual...";
+    try {
+        const result = await apiPost("/demo/documents", { document_type: docType, scenario });
+        if (!result) throw new Error("No se pudieron generar los documentos");
+        if (status) status.textContent = `Listo. Descarga y carga los PDFs en orden para ${result.claim_ref}.`;
+        if (list) {
+            list.innerHTML = result.files.map((f, idx) => `
+                <div style="border:1px solid #e2e8f0;border-radius:8px;padding:10px;background:white;display:flex;justify-content:space-between;gap:10px;align-items:center;">
+                    <div style="min-width:0;">
+                        <div style="font-weight:700;font-size:0.85rem;">${idx + 1}. ${f.label}</div>
+                        <div style="font-size:0.72rem;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${f.filename}</div>
+                        ${f.expected_finding ? `<div style="font-size:0.72rem;color:var(--text-muted);">Esperado: ${f.expected_finding}</div>` : ""}
+                    </div>
+                    <a class="btn btn-info btn-sm" href="${API}/test-pdfs/${f.filename}" download="${f.filename}" target="_blank" style="background:var(--accent-indigo);color:white;text-decoration:none;">Descargar</a>
+                </div>
+            `).join("");
+        }
+        showToast("PDFs demo generados", "success");
+    } catch (e) {
+        if (status) status.textContent = e.message || "Error generando documentos";
+        showToast("Error: " + (e.message || "No se pudieron generar documentos"), "error");
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = "Generar";
+        }
+    }
+}
+
+export async function generateCompleteDemoCase() {
+    const btn = document.getElementById("btn-demo-documents");
+    const status = document.getElementById("demo-documents-status");
+    const scenario = document.getElementById("demo-risk-level")?.value || "mixed";
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> Generando y auditando con IA...';
+    }
+    if (status) status.textContent = "Creando siniestro, documentos y factura. Ejecutando DeepSeek...";
+    try {
+        const result = await apiPost("/demo/complete-case", { scenario });
+        if (!result) throw new Error("No se pudo generar el expediente demo");
+        const audit = result.post_payment_audit || {};
+        if (result.audit_engine === "rules_fallback") {
+            showToast(result.audit_warning || "DeepSeek no disponible; se usó fallback de reglas", "warning");
+        } else {
+            showToast("Expediente demo auditado con IA", "success");
+        }
+        if (status) {
+            status.innerHTML = `Listo: ${result.claim?.claim_number || "siniestro demo"} · factura ${result.invoice?.invoice_number || ""} · motor ${result.audit_engine}`;
+        }
+        if (audit.audit_id) {
+            location.hash = `audit/${audit.audit_id}`;
+        }
+    } catch (e) {
+        if (status) status.textContent = e.message || "Error generando expediente demo";
+        showToast("Error: " + (e.message || "No se pudo generar el expediente"), "error");
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = "Generar";
+        }
+    }
+}
+
 export function setUploadDocType(type) {
     state.uploadDocType = type || "declaration";
     state.uploadResult = null;
@@ -110,7 +204,7 @@ export function setUploadDocType(type) {
 
 function renderGeneratedList() {
     if (!state.generatedFacturas.length) {
-        return '<div style="padding:24px; text-align:center; color:var(--text-muted); font-size:0.85rem;">AÃºn no has generado facturas. Click en uno de los botones de arriba.</div>';
+        return '<div style="padding:24px; text-align:center; color:var(--text-muted); font-size:0.85rem;">Aún no has generado facturas. Elige "Solo factura" o "Expediente manual completo" y pulsa Generar.</div>';
     }
     return state.generatedFacturas.map((f, idx) => {
         const scColor = f.scenario === "fraude" ? "var(--accent-rose)"
@@ -121,25 +215,25 @@ function renderGeneratedList() {
             `<div style="display:flex; justify-content:space-between; font-size:0.75rem; padding:2px 0;">
                 <span style="color:var(--text-muted); font-family:var(--font-mono);">${it.code}</span>
                 <span style="flex:1; padding:0 6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${it.description}</span>
-                <span style="font-weight:600;">${it.quantity} Ã— $${it.unit_price.toFixed(2)}</span>
+                <span style="font-weight:600;">${it.quantity} × $${it.unit_price.toFixed(2)}</span>
             </div>`
         ).join("");
         const more = (f.items_preview || []).length > 3
-            ? `<div style="font-size:0.7rem; color:var(--text-muted); padding-top:4px;">+ ${f.items_preview.length - 3} items mÃ¡s...</div>`
+            ? `<div style="font-size:0.7rem; color:var(--text-muted); padding-top:4px;">+ ${f.items_preview.length - 3} items más...</div>`
             : "";
         return `
         <div style="border:1px solid #e2e8f0; border-left:4px solid ${scColor}; border-radius:8px; padding:12px; background:white;">
             <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:8px;">
                 <div style="flex:1; min-width:0;">
                     <div style="font-weight:700; font-size:0.95rem;">${f.invoice_number}</div>
-                    <div style="font-size:0.75rem; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${f.workshop_comercial} Â· RUC ${f.ruc}</div>
+                    <div style="font-size:0.75rem; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${f.workshop_comercial} · RUC ${f.ruc}</div>
                 </div>
                 <span class="badge" style="background:${scColor}; color:white; font-size:0.7rem; text-transform:uppercase;">${f.scenario}</span>
             </div>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; font-size:0.78rem; margin-bottom:8px;">
                 <div><strong>Fecha:</strong> ${f.issue_date}</div>
                 <div><strong>Siniestro:</strong> ${f.claim_number}</div>
-                <div><strong>VehÃ­culo:</strong> ${f.plate}</div>
+                <div><strong>Vehículo:</strong> ${f.plate}</div>
                 <div><strong>Items:</strong> ${f.items_count}</div>
             </div>
             <div style="background:#f8fafc; padding:8px; border-radius:6px; margin-bottom:8px;">
@@ -238,7 +332,7 @@ export async function handleUploadFile(file) {
         return;
     }
     if (file.size > 10 * 1024 * 1024) {
-        showToast("PDF demasiado grande (mÃ¡x 10 MB)", "error");
+        showToast("PDF demasiado grande (máx 10 MB)", "error");
         return;
     }
     uploadInFlight = true;
@@ -249,20 +343,14 @@ export async function handleUploadFile(file) {
     const claimId = claimSelect ? claimSelect.value : "";
     const claimNumber = claimSelect?.selectedOptions?.[0]?.dataset?.claimNumber || "";
     const docType = state.uploadDocType || "declaration";
-    if (!claimId) {
-        if (status) status.innerHTML = `<div style="color:var(--accent-rose); padding:8px 0;">Selecciona el siniestro destino.</div>`;
-        showToast("Selecciona el siniestro destino", "error");
-        uploadInFlight = false;
-        return;
-    }
     const fd = new FormData();
     fd.append("file", file);
-    let endpoint = `/claims/${claimId}/declaration`;
+    let endpoint = claimId ? `/claims/${claimId}/declaration` : "/claims/auto/declaration";
     if (docType === "police") {
-        endpoint = `/claims/${claimId}/police-report`;
+        endpoint = claimId ? `/claims/${claimId}/police-report` : "/claims/auto/police-report";
     } else if (docType === "invoice") {
         endpoint = "/audit-pdf";
-        fd.append("claim_number", claimNumber);
+        if (claimNumber) fd.append("claim_number", claimNumber);
         fd.append("is_test", state.uploadIsTest ? "1" : "0");
     }
 
@@ -275,11 +363,11 @@ export async function handleUploadFile(file) {
         }
         state.uploadResult = await res.json();
         if (state.uploadResult.status === "already_exists") {
-            if (status) status.innerHTML = `<div style="color:var(--accent-warning); padding:8px 0;">âš  ${state.uploadResult.message}</div>`;
+            if (status) status.innerHTML = `<div style="color:var(--accent-warning); padding:8px 0;">! ${state.uploadResult.message}</div>`;
             showToast(state.uploadResult.message, "warning");
         } else {
-            if (status) status.innerHTML = `<div style="color:var(--accent-emerald); padding:8px 0;">PDF cargado correctamente â€” <strong>${file.name}</strong></div>`;
-            const label = docType === "declaration" ? "Declaracion" : docType === "police" ? "Parte policial" : "Factura";
+            if (status) status.innerHTML = `<div style="color:var(--accent-emerald); padding:8px 0;">PDF cargado correctamente - <strong>${file.name}</strong></div>`;
+            const label = docType === "declaration" ? "Declaración" : docType === "police" ? "Parte policial" : "Factura";
             showToast(`${label} cargado correctamente`, "success");
         }
         renderUploadQueued();
@@ -315,8 +403,8 @@ function renderUploadQueued() {
     if (docType !== "invoice") {
         const doc = state.uploadResult.declaration || state.uploadResult.police_report || {};
         const audit = state.uploadResult.initial_audit || state.uploadResult.post_payment_audit || null;
-        const title = docType === "declaration" ? "Declaracion cargada" : "Parte policial cargado";
-        const auditTitle = state.uploadResult.initial_audit ? "Auditoria inicial" : "Auditoria post-pago";
+        const title = docType === "declaration" ? "Declaración cargada" : "Parte policial cargado";
+        const auditTitle = state.uploadResult.initial_audit ? "Auditoría inicial" : "Auditoría post-pago";
         container.innerHTML = `
         <div class="card" style="border-left:4px solid var(--accent-emerald);">
             <div class="card-header">
@@ -325,13 +413,13 @@ function renderUploadQueued() {
             </div>
             <div class="card-body">
                 ${state.uploadResult.warnings?.length ? `<div style="color:var(--accent-warning);margin-bottom:12px;">${state.uploadResult.warnings.join("<br>")}</div>` : ""}
-                <h3 style="margin:0 0 8px;color:var(--accent-indigo);font-size:0.95rem;">Datos extraidos</h3>
+                <h3 style="margin:0 0 8px;color:var(--accent-indigo);font-size:0.95rem;">Datos extraídos</h3>
                 ${renderObjectPreview(doc)}
                 ${audit ? `
                     <h3 style="margin:18px 0 8px;color:var(--accent-indigo);font-size:0.95rem;">${auditTitle}</h3>
                     ${renderObjectPreview(audit)}
-                    ${audit.audit_id ? `<button class="btn btn-primary btn-sm" onclick="location.hash='audit/${audit.audit_id}'">Ver auditoria</button>` : ""}
-                ` : `<p style="margin-top:16px;color:var(--text-muted);">No se disparo auditoria automatica en esta carga.</p>`}
+                    ${audit.audit_id ? `<button class="btn btn-primary btn-sm" onclick="location.hash='audit/${audit.audit_id}'">Ver auditoría</button>` : ""}
+                ` : `<p style="margin-top:16px;color:var(--text-muted);">No se disparó auditoría automática en esta carga.</p>`}
             </div>
         </div>`;
         container.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -342,23 +430,23 @@ function renderUploadQueued() {
     const isNew = state.uploadResult.status !== "already_exists";
     const borderColor = isNew ? "var(--accent-emerald)" : "var(--accent-warning)";
     const headerColor = isNew ? "var(--accent-emerald)" : "var(--accent-warning)";
-    const headerText = isNew ? "Factura aÃ±adida a la cola de auditorÃ­a" : "Factura ya registrada";
+    const headerText = isNew ? "Factura añadida a la cola de auditoría" : "Factura ya registrada";
     const testTag = state.uploadResult.is_test ? '<span class="badge badge-warning" style="background:#94a3b8;color:white;margin-left:8px;">TEST</span>' : "";
 
     container.innerHTML = `
         <div class="card" style="border-left: 4px solid ${borderColor};">
             <div class="card-header">
                 <h2 style="color:${headerColor};">${headerText} ${testTag}</h2>
-                <span class="badge badge-warning">Pendiente de auditorÃ­a</span>
+                <span class="badge badge-warning">Pendiente de auditoría</span>
             </div>
             <div class="card-body">
                 <div style="margin-bottom:16px;">
-                    <h3 style="margin:0 0 8px; color:var(--accent-indigo); font-size:0.95rem;">Datos ExtraÃ­dos del PDF</h3>
+                    <h3 style="margin:0 0 8px; color:var(--accent-indigo); font-size:0.95rem;">Datos Extraídos del PDF</h3>
                     <table>
                         <tbody>
                             <tr><td><strong>Archivo:</strong></td><td>${state.uploadResult.filename}</td></tr>
                             <tr><td><strong>RUC:</strong></td><td style="font-family:var(--font-mono)">${inv.ruc || '<span style="color:var(--accent-rose)">FALTA</span>'}</td></tr>
-                            <tr><td><strong>Factura NÂº:</strong></td><td><strong>${inv.invoice_number || '<span style="color:var(--accent-rose)">FALTA</span>'}</strong></td></tr>
+                            <tr><td><strong>Factura Nº:</strong></td><td><strong>${inv.invoice_number || '<span style="color:var(--accent-rose)">FALTA</span>'}</strong></td></tr>
                             <tr><td><strong>Taller:</strong></td><td>${inv.workshop_name || '-'}</td></tr>
                             <tr><td><strong>Fecha:</strong></td><td>${inv.issue_date || '-'}</td></tr>
                             <tr><td><strong>Subtotal:</strong></td><td>$${(inv.subtotal||0).toFixed(2)}</td></tr>
@@ -370,7 +458,7 @@ function renderUploadQueued() {
                 ${items.length > 0 ? `
                 <h3 style="color:var(--accent-indigo); font-size:0.95rem; margin-bottom:8px;">Items Facturados (${items.length})</h3>
                 <table style="margin-bottom:18px;">
-                    <thead><tr><th>CÃ³digo</th><th>DescripciÃ³n</th><th>Cant.</th><th>P. Unit.</th><th>Total</th></tr></thead>
+                    <thead><tr><th>Código</th><th>Descripción</th><th>Cant.</th><th>P. Unit.</th><th>Total</th></tr></thead>
                     <tbody>
                         ${items.map(i => `
                             <tr>
@@ -386,8 +474,8 @@ function renderUploadQueued() {
                 ` : ''}
 
                 <div style="display:flex; gap:12px; align-items:center; padding-top:8px; border-top:1px solid #e2e8f0;">
-                    <p style="margin:0; color:var(--text-muted); font-size:0.9rem;">${state.uploadResult.post_payment_audit ? "La auditoria post-pago se ejecuto automaticamente." : "La auditoria se ejecuta desde la cola de pendientes."}</p>
-                    <button class="btn btn-primary" onclick="navigateTo('auditorias')" style="white-space:nowrap;">Ver Auditorias</button>
+                    <p style="margin:0; color:var(--text-muted); font-size:0.9rem;">${state.uploadResult.post_payment_audit ? "La auditoría post-pago se ejecutó automáticamente." : "La auditoría se ejecuta desde la cola de pendientes."}</p>
+                    <button class="btn btn-primary" onclick="navigateTo('auditorias')" style="white-space:nowrap;">Ver Auditorías</button>
                 </div>
                 ${state.uploadResult.post_payment_audit ? `<div style="margin-top:14px;">${renderObjectPreview(state.uploadResult.post_payment_audit)}</div>` : ""}
             </div>

@@ -17,12 +17,28 @@ La base de datos SQLite se crea en `backend/auditor.db` al iniciar la aplicació
 ## Casos de Prueba de Fraude Plantados
 
 El dataset incluye 10 casos diseñados intencionadamente para activar alertas de alto riesgo (Alerta Roja):
-1. **Siniestro SIN-6 (Borde de Vigencia)**: Ocurrió a las 24 horas del inicio de vigencia de la póliza y reclama el 92% de la suma asegurada.
-2. **Siniestro SIN-7 (Demora Robo)**: Reportado 9 días después de la ocurrencia del robo del automóvil.
-3. **Siniestro SIN-8 (Alta Frecuencia)**: Asegurado Juan Pérez presenta 4 siniestros acumulados en 12 meses y mora activa en su prima (falla RF03).
-4. **Siniestro SIN-9 (Beneficiario Recurrente)**: Proveedor "Importadora Autopartes Express" reclama fondos cruzados bajo múltiples pólizas.
-5. **Siniestro SIN-10 (Dinámica Sospechosa)**: Ocurrió a las 3:30 AM en zona despoblada de Guayaquil, sin testigos.
-6. **Siniestro SIN-11 (Frecuencia Vehículo)**: Reclamos acumulados recurrentes sobre el mismo auto de Roberto Andrade.
-7. **Siniestro SIN-12 (Narrativa Clonada)**: Descripción copiada textualmente de otro siniestro histórico para cobrar fondos duplicados.
-8. **Siniestro SIN-14 (Fuera de Vigencia)**: Accidente de tránsito reportado después del vencimiento de la póliza (falla RF02).
-9. **Siniestro SIN-15 (Ramo Inconsistente)**: Siniestro de colisión de auto ingresado en póliza contratada del ramo de Salud (falla RF01).
+
+1. **Borde de Vigencia**: Ocurrió a las 24 horas del inicio de vigencia de la póliza y reclama el 92% de la suma asegurada.
+2. **Demora Robo**: Reportado 9 días después de la ocurrencia del robo del automóvil.
+3. **Alta Frecuencia**: Asegurado con 4 siniestros acumulados en 12 meses y mora activa en su prima (falla RF03).
+4. **Beneficiario Recurrente**: Proveedor "Importadora Autopartes Express" reclama fondos cruzados bajo múltiples pólizas.
+5. **Dinámica Sospechosa**: Ocurrió a las 3:30 AM en zona despoblada, sin testigos.
+6. **Frecuencia Vehículo**: Reclamos acumulados recurrentes sobre el mismo auto.
+7. **Narrativa Clonada**: Descripción copiada textualmente de otro siniestro histórico para cobrar fondos duplicados.
+8. **Monto Cercano a Suma Asegurada**: 98% de suma asegurada reclamado.
+9. **Fuera de Vigencia**: Accidente de tránsito reportado después del vencimiento de la póliza (falla RF02).
+10. **Ramo Inconsistente**: Siniestro de colisión de auto ingresado en póliza contratada del ramo de Salud (falla RF01).
+
+## Motor de IA
+
+Los datos sintéticos son auditados por **DeepSeek V4 Flash** vía OpenCode Go, que analiza:
+- Sobrecobros contra tarifario maestro.
+- Duplicados e incoherencias mecánicas.
+- Inconsistencias entre documentos del expediente.
+- Señales de riesgo cruzadas con historial.
+
+## Notas
+
+- Todos los datos son completamente ficticios y no representan asegurados reales.
+- Los patrones de fraude plantados siguen la rúbrica oficial del reto HackIAthon 2026.
+- El seed se ejecuta automáticamente al iniciar la aplicación.

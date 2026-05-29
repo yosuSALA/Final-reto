@@ -61,7 +61,6 @@ export function renderSiniestrosView() {
             ${state.showClaimForm ? renderClaimForm() : ""}
         </div>
         ${renderWorkflowContext()}
-        ${renderFraudReferencePanel()}
         <div class="card">
             <div class="card-header siniestros-toolbar">
                 <input class="filter-input" type="search" value="${state.claimsSearchTerm || ""}" placeholder="Buscar numero, placa, asegurado..." oninput="debouncedSearch(this.value)">
@@ -149,26 +148,6 @@ function renderWorkflowContext() {
             ${chips.map(chip => `<span class="workflow-chip">${chip}</span>`).join("")}
             <button class="btn btn-ghost btn-sm" onclick="clearClaimsWorkflowFocus()">Cerrar</button>
         </div>
-    </div>`;
-}
-
-function renderFraudReferencePanel() {
-    const signals = [
-        ["Vigencia", "Reclamo cercano al borde de vigencia", "<= 10 dias: 8 pts"],
-        ["Robo", "Demora entre ocurrencia y denuncia formal", "> 48 horas: 8 pts"],
-        ["Frecuencia asegurado", "Multiples siniestros en 18 meses", ">= 3 siniestros: 8 pts"],
-        ["Frecuencia vehiculo", "Vehiculo con multiples reclamos", ">= 3 siniestros: 6 pts"],
-        ["Proveedor recurrente", "Beneficiario/proveedor asociado a varios casos", "> 2 casos observados: 5 pts"],
-        ["Documentos", "Faltantes o inconsistentes", "Hasta 10 pts"],
-        ["Narrativas", "Descripciones similares entre reclamos", "> 85% similitud: 8 pts"],
-        ["Monto", "Cercano o superior a suma asegurada", ">95% suma asegurada: 5 pts"],
-    ];
-    return `<div class="card" style="margin-bottom:16px;border-left:4px solid var(--accent-indigo);">
-        <div class="card-header" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;" onclick="var b=this.parentElement.querySelector('.card-body');var o=b.style.display==='none';b.style.display=o?'block':'';this.querySelector('span').textContent=o?'\u2212':'+'">
-            <h2>Señales de posible fraude</h2>
-            <span style="font-size:1.2rem;color:var(--accent-indigo);">+</span>
-        </div>
-        <div class="card-body" style="display:none">${miniTable(["Señal", "Criterio", "Puntaje"], signals)}</div>
     </div>`;
 }
 

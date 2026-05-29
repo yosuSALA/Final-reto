@@ -15,7 +15,13 @@ export async function loadDashboard() {
 
     try {
         switch (role) {
-            case "demo_jurado":  await renderDemoJurado(page, perms); break;
+            case "demo_jurado":
+                if (localStorage.getItem("auditPanelGuideHidden") === "1") {
+                    await renderDemoJurado(page, perms);
+                } else {
+                    await renderActionFlowPanel(page, perms);
+                }
+                break;
             case "analista":     await renderActionFlowPanel(page, perms); break;
             case "antifraude":   await renderActionFlowPanel(page, perms); break;
             case "jefatura":     await renderJefatura(page, perms); break;
@@ -1116,11 +1122,40 @@ async function renderActionFlowPanel(page, perms, options = {}) {
             <div><strong>Monto estimado a cubrir</strong><span>$${fmt(((dash || {}).invoice_total_sum || 0) - ((dash || {}).total_overcharge || 0))}</span></div>
             <div><strong>Control activo</strong><span>${(fraud || {}).total_high_risk ?? 0} alto riesgo · ${(ops || {}).audit_queue?.pending ?? 0} facturas pendientes</span></div>
         </div>
+        ${renderDemoVerificationFlow()}
         ${renderNextWorkStrip(workflow)}
         <div class="audit-workflow">${workflow.map(step => renderActionWorkflowStep(step, role)).join("")}</div>
         <div class="intel-grid-2">
             <div class="card"><div class="card-header"><h2>Trabajo del Perfil Actual</h2></div><div class="card-body audit-actions-grid">${renderRoleActions(role, ops || {})}</div></div>
             <div class="card"><div class="card-header"><h2>Alertas de Auditoría</h2></div><div class="card-body">${renderAuditAlerts(fraud || {}, ops || {})}</div></div>
+        </div>
+    </div>`;
+}
+
+function renderDemoVerificationFlow() {
+    const steps = [
+        ["1", "Generar PDFs", "En Carga, el juez puede generar declaración, parte policial y factura por separado, o crear un expediente automático."],
+        ["2", "Cargar documentos", "El selector de siniestro es opcional: si el PDF trae referencia SIN-..., el sistema detecta o crea el expediente."],
+        ["3", "Orden del expediente", "Declaración, parte policial y factura quedan asociados al mismo siniestro para revisar trazabilidad."],
+        ["4", "Auditar con IA", "DeepSeek es el motor principal. Las reglas quedan como respaldo técnico o acción manual si la API no responde."],
+    ];
+    return `<div class="card" style="margin-bottom:16px;border-left:4px solid var(--accent-indigo);">
+        <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+            <div>
+                <h2>Flujo verificable para jurado</h2>
+                <p style="margin:4px 0 0;color:var(--text-muted);">Ruta actual de la demo: manual paso a paso o expediente automático con IA.</p>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="navigateTo('upload')">Ir a Carga</button>
+        </div>
+        <div class="card-body">
+            <div class="audit-workflow">
+                ${steps.map(([n, title, text]) => `<div class="audit-step completado">
+                    <div class="audit-step-index">${n}</div>
+                    <div class="audit-step-title"><h3>${title}</h3></div>
+                    <div class="audit-step-subject">${text}</div>
+                    <span class="audit-status completado">verificable</span>
+                </div>`).join("")}
+            </div>
         </div>
     </div>`;
 }

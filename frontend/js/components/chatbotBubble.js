@@ -66,14 +66,11 @@ export function initChatbotBubble() {
     });
 
     toggle.addEventListener("click", () => {
-        if (panel.style.display === "none") {
-            panel.style.display = "flex";
-            panel.classList.remove("closing");
-            // tiny focus delay so panel is visible
-            setTimeout(() => input?.focus(), 350);
+        if (panel.classList.contains("active")) {
+            panel.classList.remove("active");
         } else {
-            panel.classList.add("closing");
-            setTimeout(() => { panel.style.display = "none"; panel.classList.remove("closing"); }, 240);
+            panel.classList.add("active");
+            setTimeout(() => input?.focus(), 350);
         }
     });
 

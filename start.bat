@@ -1,13 +1,25 @@
 @echo off
+setlocal
+chcp 65001 >nul
 echo ========================================================
-echo   Iniciando Auditor Agéntico de Facturación de Siniestros
+echo   Iniciando Miraclex - Auditor Agentico de Siniestros
 echo ========================================================
 echo.
 
-echo Instalando dependencias...
-npm install
-pip install -r backend\requirements.txt
+where py >nul 2>nul
+if %errorlevel%==0 (
+    py -3 scripts\start.py
+    goto :end
+)
 
-echo El sistema estara disponible en: http://localhost:8000/app/
+where python >nul 2>nul
+if %errorlevel%==0 (
+    python scripts\start.py
+    goto :end
+)
 
-python -m uvicorn backend.main:app --reload --port 8000
+echo No se encontro Python 3.10+ en este equipo.
+echo Instala Python desde https://www.python.org/downloads/ y vuelve a ejecutar start.bat
+
+:end
+endlocal

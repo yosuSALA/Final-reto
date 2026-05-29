@@ -1,201 +1,275 @@
-# Miraclex — Detector Agentico de Fraude en Siniestros | Hackathon 2026
+# Miraclex — Auditor Agéntico de Siniestros | HackIAthon 2026
 
-Plataforma inteligente de Aseguradora del Sur para auditar automaticamente facturas de siniestros (vehiculares, salud, vida, hogar, generales), priorizar casos criticos y proteger la reserva tecnica. Detecta fraude, sobrecobros, duplicados e incoherencias antes del pago, combinando un motor de reglas deterministicas con DeepSeek V4 Flash para evaluacion de riesgo.
+Miraclex es una plataforma web para gestionar expedientes de siniestros, generar documentación sintética para demo, cargar PDFs, extraer datos, auditar facturas y priorizar posibles riesgos antes del pago. La demo final funciona de forma portable: un solo comando levanta FastAPI, SQLite y el frontend SPA.
 
----
+La IA principal es **DeepSeek V4 Flash vía OpenCode Go**. El motor de reglas queda disponible como respaldo técnico si la API no responde o como opción manual de auditoría.
 
-## 1. Resumen Ejecutivo
-El prototipo prioriza casos sospechosos para revision humana en la Unidad Antifraude. Combina:
-- Motor de reglas y scoring de riesgo
-- Auditoria de facturas de taller (PDF)
-- Dashboard ejecutivo con priorizacion
-- Chatbot con preguntas del jurado y consultas por siniestro
+## Estado Final
 
-Principio clave: la solucion genera alertas de posible fraude; no acusa ni decide pagos/rechazos automaticamente.
+- App lista en `http://localhost:8000/app/`.
+- Arranque portable con `start.bat`, `start.sh` o `npm start`.
+- Generador demo manual: declaración, parte policial y factura descargables.
+- Generador demo automático: expediente completo con auditoría IA.
+- Carga de documentos sin selector obligatorio: si el PDF trae referencia `SIN-...`, el sistema detecta o crea el siniestro.
+- Auditoría DeepSeek V4 Flash como acción principal; reglas solo como fallback/manual.
+- Chatbot inteligente con restricciones por perfil.
+- Plataforma de inteligencia operativa con insights DeepSeek.
+- Flujo de decisión humana por roles: aprobar, rechazar, escalar y derivar a Legal.
+- Workspace centralizado por siniestro con timeline y expediente completo.
+- Panel de administración con log de auditoría de acciones.
+- Datos sintéticos: no se usan datos personales reales.
 
----
+## Stack
 
-## 2. Planteamiento del Problema
-Las aseguradoras enfrentan pérdidas millonarias debido a reclamaciones fraudulentas, que van desde inconsistencias documentales leves hasta patrones complejos como:
-- Siniestros reportados inmediatamente después de contratar la póliza o antes de vencerse (borde de vigencia).
-- Frecuencias atípicas de reclamos por parte del mismo asegurado, conductor o vehículo.
-- Sobrecobros de talleres mecánicos y facturación de repuestos no relacionados con el siniestro.
-- Clonación de descripciones físicas del incidente (narrativas coincidentes).
+- **Backend**: Python 3.10+, FastAPI, SQLAlchemy.
+- **Base de datos**: SQLite (`backend/auditor.db`).
+- **Frontend**: HTML, CSS y JavaScript modular sin build.
+- **PDFs**: `pdfplumber` para extracción y `reportlab` para generación.
+- **IA**: DeepSeek V4 Flash vía OpenCode Go, con fallback directo opcional a DeepSeek API.
 
-El análisis manual de estos factores es lento, costoso y propenso a errores, lo que justifica una automatización agéntica explicable que actúe como alerta temprana para los revisores humanos.
+## Instalación y Arranque
 
----
+### Windows
 
-## 3. Objetivos
-- Cargar y procesar datos sinteticos de siniestros multi-ramo (vehiculos, salud, vida, hogar, generales).
-- Detectar senales de posible fraude y calcular score 0-100.
-- Clasificar en Verde, Amarillo y Rojo con accion sugerida.
-- Explicar por que cada caso fue marcado.
-- Permitir consultas en lenguaje natural para analistas.
+```bat
+start.bat
+```
 
----
+### macOS/Linux
 
-## 4. Alcance
-Este prototipo abarca:
-1. Ingestión y estructuración de pólizas, vehículos, asegurados, documentos y siniestros.
-2. Cálculo determinístico de las 14 señales de la rúbrica y las 7 reglas críticas (RF01-RF07).
-3. Auditoría automatizada de facturas (SRI) extrayendo texto de PDFs y contrastándolo con el tarifario homologado.
-4. Asistencia por chat usando OpenCode Go (DeepSeek v4 Flash).
-5. Interfaz de usuario SPA con cola de auditoría y chat interactivo colapsables con animaciones de transiciones.
-
-No incluye: acusacion formal, conclusion legal, rechazo automatico de siniestros.
-
----
-
-## 5. Arquitectura y Stack Tecnológico
-La arquitectura detallada y el flujo se describen en [docs/arquitectura.md](docs/arquitectura.md).
-
-- **Backend**: Python 3.10+ / FastAPI (puerto 8000).
-- **Frontend Server**: Node.js / Express (puerto 3000, proxy API y SPA estática).
-- **Base de Datos**: SQLite con SQLAlchemy.
-- **Modelado de Datos**: 8 tablas normalizadas (ver [docs/modelo_datos.md](docs/modelo_datos.md)).
-- **Motores de IA**: OpenCode Go (DeepSeek v4 Flash).
-- **Frontend**: HTML5 / CSS Vanilla / JavaScript Modular (sin paso de compilación).
-- **Procesamiento de Archivos**: pdfplumber (OCR/Extracción Facturas SRI) y reportlab (Generador de Informes PDF).
-
----
-
-## 6. Modelo de Datos
-El sistema utiliza una base de datos SQLite relacional. Las tablas clave son:
-- `siniestros`: Almacena el siniestro, el score calculado, clasificación y el JSON de alertas.
-- `polizas`: Almacena vigencias, prima, suma asegurada y deducible.
-- `asegurados_sinteticos`: Almacena historial de mora y frecuencia de reclamos del asegurado.
-- `vehiculos`: Detalles físicos del vehículo (placa, chasis, marca, modelo).
-- `documentos`: Estado de entrega y legibilidad de documentos requeridos (Cédula, Licencia, Denuncia, Presupuesto).
-- `invoices` y `invoice_items`: Datos extraídos de facturas del taller para auditoría de tarifas.
-
-*La documentación detallada se encuentra en [docs/modelo_datos.md](docs/modelo_datos.md).*
-
----
-
-## 7. Señales de Posible Fraude
-Se evalúan 14 señales de fraude ponderadas que suman un máximo de 98 puntos:
-1. Reclamo cercano a borde de vigencia (S01 - hasta 8 pts)
-2. Demora reporte robo (S02 - hasta 8 pts)
-3. Alta frecuencia asegurado (S03 - hasta 8 pts)
-4. Alta frecuencia vehículo (S04 - hasta 6 pts)
-5. Frecuencia conductor (S05 - hasta 8 pts)
-6. Frecuencia solo Responsabilidad Civil (S06 - hasta 6 pts)
-7. Beneficiario recurrente cruzado (S07 - hasta 10 pts)
-8. Documentación incompleta/ilegible (S08 - hasta 4 pts)
-9. Dinámica sospechosa / nocturna (S09 - hasta 6 pts)
-10. Evento sin tercero involucrado (S10 - hasta 6 pts)
-11. Documentos con inconsistencias de fecha/enmienda (S11 - hasta 10 pts)
-12. Reporte tardío extremo (S12 - hasta 5 pts)
-13. Similitud de narrativas entre siniestros (S13 - hasta 8 pts)
-14. Monto reclamado cercano a la suma asegurada (S14 - hasta 5 pts)
-
-*La justificación detallada y algoritmo se encuentra en [docs/reglas_negocio.md](docs/reglas_negocio.md).*
-
----
-
-## 8. Score de Riesgo (Semáforo)
-El puntaje obtenido de las 14 señales se normaliza a una escala de 0-100 y clasifica los siniestros:
-- **🟢 Verde (0 - 40)**: Riesgo Bajo. Continuar flujo normal.
-- **🟡 Amarillo (41 - 75)**: Riesgo Medio. Escalar a Unidad Antifraude para revisión documental.
-- **🔴 Rojo (76 - 100)**: Riesgo Alto. Escalar a Unidad Antifraude para inspección física especializada.
-
-Nota operativa: el score se usa para priorizar revision humana, no para decision final automatica.
-
----
-
-## 9. Uso de Inteligencia Artificial (IA)
-- **DeepSeek V4 Flash (Chatbot principal)**: Empleado para reescribir y estructurar en lenguaje natural formal las respuestas a las consultas del chatbot conversacional.
-- **DeepSeek V4 Flash (Auditor de Facturas)**: Utilizado para auditar facturas complejas de talleres mediante técnicas de Chain-of-Thought y Self-Reflection, evaluando riesgo de sobrecobro e inconsistencias.
-- **Similitud semántica local**: Lógica NLP local para comparar narrativas duplicadas sin costo de tokens ni latencia innecesaria.
-
-*La documentación sobre la integración se encuentra en [docs/uso_ia.md](docs/uso_ia.md).*
-
----
-
-## 10. Instalacion y Ejecucion
-
-### 1. Variables de Entorno
-Crea un archivo `.env` en la raíz del proyecto basándote en el archivo `.env.example`:
 ```bash
-# Principal (recomendado): OpenCode Go con modelo explícito
-OPENCODE_GO_API_KEY=tu_api_key_de_opencode_go_aqui
-OPENCODE_GO_API_BASE=https://tu-gateway-opencode-go/v1
+./start.sh
+```
+
+### Con Node/npm
+
+```bash
+npm start
+```
+
+El launcher crea `.venv`, instala `backend/requirements.txt` y levanta Uvicorn en `127.0.0.1:8000`. Si el puerto ya tiene una instancia válida de la app, lo informa y no falla.
+
+URLs útiles:
+
+- Landing: `http://localhost:8000/`
+- App: `http://localhost:8000/app/`
+- Swagger/API: `http://localhost:8000/docs`
+
+## Variables de Entorno
+
+Copia `.env.example` a `.env` si vas a usar IA real:
+
+```env
+OPENCODE_GO_API_KEY=tu_api_key
+OPENCODE_GO_API_BASE=https://opencode.ai/zen/go/v1
 OPENCODE_GO_MODEL=deepseek-v4-flash
 
-# Opcional: fallback directo a DeepSeek
 DEEPSEEK_API_KEY=
 DEEPSEEK_API_BASE=https://api.deepseek.com
 DEEPSEEK_MODEL=deepseek-chat
 ```
 
-Nota: el backend prioriza `OPENCODE_GO_API_KEY` y usa ese gateway como fuente por defecto del chatbot.
+Prioridad de IA:
 
-### 2. Instalacion de Dependencias
-Instala los paquetes Python:
-```bash
-pip install -r backend/requirements.txt
-```
+1. `OPENCODE_GO_API_KEY` con `OPENCODE_GO_MODEL=deepseek-v4-flash`.
+2. `DEEPSEEK_API_KEY` como fallback directo.
+3. Motor de reglas local si la IA no está disponible o si el usuario lo ejecuta manualmente.
 
-### 3. Inicializacion y Ejecucion del Servidor
-Primero, inicia el Frontend (Express, puerto 3000):
-```bash
-npm install
-node server.js
-```
+## Flujo Demo Recomendado
 
-En otra terminal, inicia el Backend (FastAPI, puerto 8000):
-```bash
-python -m uvicorn backend.main:app --reload --port 8000
-```
-La app inicializa SQLite y carga data sintetica de demo.
+### Opción A: Expediente Automático con IA
 
-### 4. Ejecución de Pruebas Unitarias
-Para correr la suite de pruebas del motor de reglas:
-```bash
-python -m unittest tests/test_fraud_rules.py
-```
+1. Abrir `http://localhost:8000/app/`.
+2. Entrar con perfil `Demo / Jurado` o un perfil con permisos de operación/auditoría.
+3. Ir a `Carga`.
+4. En `Generador de documentos demo`, elegir `Expediente automático con IA`.
+5. Elegir nivel de riesgo de factura: `Aleatorio`, `Limpio`, `Sobrecobro` o `Fraude`.
+6. Pulsar `Generar`.
+7. El sistema crea siniestro, declaración, parte policial, factura y auditoría. Al terminar abre el detalle de auditoría.
 
-### 5. Acceso Web
-- SPA Frontend: `http://localhost:3000/`
-- Landing / API Backend: `http://localhost:8000/`
-- App principal: `http://localhost:8000/app/`
+### Opción B: Flujo Manual Paso a Paso
 
----
+1. Ir a `Carga`.
+2. En `Qué generar`, elegir `Expediente manual completo (3 PDFs)`.
+3. Pulsar `Generar` y descargar los PDFs.
+4. Cargar primero la `Declaración`, luego el `Parte Policial`, luego la `Factura`.
+5. Dejar `Siniestro destino` en `Detectar automáticamente desde el PDF` si los PDFs traen referencia `SIN-...`.
+6. Revisar la cola de auditorías y ejecutar la auditoría IA desde la vista de pendientes.
 
-## 11. Demo y Casos de Uso
-1. **Visualizar el Dashboard**: Revisa el semáforo y las métricas financieras de siniestros.
-2. **Consultar al Asistente Antifraude**: Abre la burbuja de chat (esquina inferior derecha) y haz clic en alguna pregunta predefinida (FAQ) o formula tus propias preguntas como:
-   - *¿Qué asegurados tienen mayor frecuencia de reclamos?*
-   - *¿Por qué el siniestro SIN-6 fue marcado con alto riesgo?*
-3. **Revisar Siniestros por Asegurado**: Navega a la pestaña de "Siniestros" donde los casos se agrupan por asegurado. Cada fila muestra el score de posible fraude (0-100) con semaforo Verde/Amarillo/Rojo.
-4. **Consultar Riesgo con DeepSeek**: Haz clic en el boton `DeepSeek` junto a cualquier siniestro para que el chatbot analice automaticamente por que fue marcado con ese nivel de riesgo.
-5. **Ver Cola de Auditoria**: Despliega el panel colapsable flotante de pendientes (esquina inferior izquierda) para inspeccionar facturas sin auditar.
-6. **Resumen Ejecutivo**: Usa el boton `Resumen` en cada siniestro para ver historial del asegurado y del bien asegurado.
+Si el PDF no trae referencia de siniestro y no se puede resolver automáticamente, la app pedirá selección manual.
 
----
+## Flujo Operativo del Expediente
 
-## 12. Seguridad, Privacidad y Ética
-- **Protección de Datos**: Todos los nombres de clientes, RUCs, placas de vehículos y montos son 100% sintéticos y generados aleatoriamente, cumpliendo con la Ley Orgánica de Protección de Datos Personales (LOPDP).
-- **Revisión Humana Obligatoria**: La IA actúa únicamente como una herramienta de apoyo que sugiere alertas y calcula desviaciones. Todas las decisiones de aprobación, rechazo o escalamiento quedan reservadas al analista humano.
+| Etapa | Acción | Endpoint principal |
+|---|---|---|
+| 1 | Crear o resolver siniestro | `POST /api/claims` o resolución automática |
+| 2 | Cargar declaración | `POST /api/claims/auto/declaration` o `POST /api/claims/{id}/declaration` |
+| 3 | Cargar parte policial | `POST /api/claims/auto/police-report` o `POST /api/claims/{id}/police-report` |
+| 4 | Cargar factura | `POST /api/audit-pdf` |
+| 5 | Auditar con IA | `POST /api/audit-ai/{invoice_id}` (DeepSeek V4 Flash) |
+| 5b | Auditar con reglas (fallback/manual) | `POST /api/audit-rules/{invoice_id}` |
+| 5c | Auditoría masiva IA | `POST /api/audit-ai-all` o `POST /api/audit-deepseek-batch` |
+| 6 | Decisión humana | Ver sección "Flujo de Decisión Humana" |
 
----
+El parte policial es condicional, pero en la demo completa se genera para dejar el expediente totalmente verificable.
 
-## 13. Limitaciones y Próximos Pasos
-- **NLP Avanzado**: El análisis de narrativas actual se basa en correspondencia de strings. Se planea migrar a modelos de Embeddings locales (ej. SentenceTransformers) para detectar similitudes semánticas más abstractas.
-- **OCR de Imágenes**: Actualmente el sistema procesa facturas estructuradas en PDF. El siguiente paso es integrar un motor de OCR para digitalizar imágenes de facturas arrugadas o fotos tomadas desde smartphones.
+## Flujo de Decisión Humana
 
-*La documentación sobre fronteras de error se encuentra en [docs/limitaciones.md](docs/limitaciones.md).*
+El sistema implementa un flujo de decisión por roles con las siguientes transiciones:
 
----
+| Acción | Endpoint | Quién puede | Precondición |
+|---|---|---|---|
+| Aprobar | `POST /api/audit-results/{id}/approve` | Costos / Contabilidad | Siniestro no escalado |
+| Aprobar (final) | `POST /api/audit-results/{id}/approve` | Jefatura | Siniestro escalado |
+| Escalar | `POST /api/audit-results/{id}/escalate` | Costos / Contabilidad | — |
+| Rechazar | `POST /api/audit-results/{id}/reject` | Jefatura | Siniestro previamente escalado |
+| Derivar a Legal | `POST /api/audit-results/{id}/send-to-legal` | Jefatura | Siniestro en estado escalado |
 
-## 14. Entregables y Evidencia
+Legal puede consultar los siniestros derivados en `GET /api/legal/notifications`.
+
+## Chatbot Inteligente
+
+Burbuja flotante en la esquina inferior derecha de la app.
+
+- Endpoint: `POST /api/agent/query`.
+- Inferencia SQL + reescritura con DeepSeek V4 Flash.
+- Restricciones por perfil: cada rol recibe respuestas limitadas a su ámbito.
+- Preguntas guiadas + pregunta libre.
+
+## Plataforma de Inteligencia
+
+Endpoints de inteligencia operativa accesibles desde el dashboard:
+
+| Endpoint | Descripción |
+|---|---|
+| `GET /api/intelligence/fraud` | Métricas antifraude |
+| `GET /api/intelligence/portfolio` | Métricas de cartera |
+| `GET /api/intelligence/operations` | Métricas operativas |
+| `GET /api/intelligence/audit-coverage` | Cobertura de auditoría |
+| `GET /api/intelligence/claim/{claim_id}` | Insight por siniestro |
+| `POST /api/intelligence/deepseek-insight` | Insight generado por DeepSeek V4 Flash bajo demanda |
+
+## Endpoints Clave
+
+### Demo y Generación
+
+- `POST /api/demo/documents`: genera PDFs demo descargables para carga manual.
+- `POST /api/demo/complete-case`: genera expediente completo y audita con IA.
+
+### Expediente
+
+- `POST /api/claims`: crea siniestro.
+- `POST /api/claims/import-csv`: importa siniestros desde CSV.
+- `POST /api/claims/auto/declaration`: carga declaración detectando/creando siniestro desde el PDF.
+- `POST /api/claims/auto/police-report`: carga parte policial detectando siniestro desde el PDF.
+- `GET /api/claims`: lista siniestros.
+- `GET /api/claims/{id}/executive-summary`: resumen ejecutivo del siniestro.
+- `GET /api/claims/{id}/timeline`: timeline del expediente.
+- `GET /api/claims/{id}/declaration`: declaración del siniestro.
+- `GET /api/claims/{id}/police-report`: parte policial.
+- `GET /api/claims/{id}/police-requirement`: requisito de parte policial.
+- `GET /api/claims/{id}/invoices`: facturas del siniestro.
+
+### Auditoría
+
+- `POST /api/audit-pdf`: carga factura y la deja en cola de auditoría.
+- `POST /api/audit-ai/{invoice_id}`: auditoría individual con DeepSeek V4 Flash.
+- `POST /api/audit-ai-all`: auditoría masiva con DeepSeek V4 Flash (concurrente).
+- `POST /api/audit-deepseek-batch`: auditoría batch con DeepSeek V4 Flash.
+- `POST /api/audit/{invoice_id}`: auditoría con agente (motor principal + fallback).
+- `POST /api/audit-rules/{invoice_id}`: auditoría solo con reglas locales.
+- `POST /api/audit-all`: auditoría masiva con agente.
+- `GET /api/audit-results`: lista auditorías.
+- `GET /api/audit-results/{id}`: detalle de auditoría.
+- `GET /api/audit-results/{id}/report-preview`: reporte PDF.
+- `GET /api/invoices/pending`: facturas pendientes de auditoría.
+
+### Decisiones
+
+- `POST /api/audit-results/{id}/approve`: aprobar.
+- `POST /api/audit-results/{id}/reject`: rechazar.
+- `POST /api/audit-results/{id}/escalate`: escalar.
+- `POST /api/audit-results/{id}/send-to-legal`: derivar a Legal.
+- `GET /api/legal/notifications`: siniestros derivados a Legal.
+
+### Scoring de Fraude
+
+- `GET /api/siniestros/{id}/fraud-score`: score de fraude individual.
+- `POST /api/siniestros/score-all`: recalcular scores de todos los siniestros.
+- `GET /api/siniestros/ranking`: ranking por score descendente.
+- `GET /api/fraud-dashboard`: dashboard de métricas de fraude.
+
+### Tarifario
+
+- `GET /api/tariffs`: listar tarifario.
+- `POST /api/tariffs`: crear entrada.
+- `PUT /api/tariffs/{id}`: actualizar entrada.
+- `DELETE /api/tariffs/{id}`: eliminar entrada.
+- `POST /api/tariffs/import-csv`: importar tarifario desde CSV.
+
+### Dashboard
+
+- `GET /api/dashboard`: KPIs principales.
+- `GET /api/dashboard/claims-by-day`: serie temporal de siniestros por día.
+
+### Perfiles y Seguridad
+
+- `GET /api/profiles`: listar perfiles.
+- `POST /api/profiles`: crear perfil con contraseña.
+- `POST /api/profiles/{id}/token`: login con contraseña.
+- `POST /api/profiles/admin-login`: login de administrador con clave maestra.
+- `PUT /api/profiles/{id}`: actualizar perfil.
+- `PUT /api/profiles/{id}/password`: cambiar contraseña.
+- `DELETE /api/profiles/{id}`: eliminar perfil (soft delete).
+
+### Administración
+
+- `GET /api/admin/audit-log`: log de auditoría de acciones del sistema.
+- `GET /api/admin/audit-log/stats`: estadísticas del log de auditoría.
+
+### Chatbot
+
+- `POST /api/agent/query`: consulta al chatbot inteligente.
+
+## Documentación
+
+- Manual de uso: `docs/MANUAL_USO.md`
+- Funciones del sistema: `docs/DOC_FUNCIONES.md`
+- Arquitectura: `docs/arquitectura.md`
+- Uso de IA: `docs/uso_ia.md`
+- Modelo de datos: `docs/modelo_datos.md`
+- Reglas de negocio: `docs/reglas_negocio.md`
+- Perfiles: `docs/PERFILES_ACCESO.md`
 - Matriz de cumplimiento: `docs/MATRIZ_CUMPLIMIENTO_RETO.md`
-- Plan de implementacion: `docs/PLAN_SOFISTICADO_IMPLEMENTACION.md`
-- Loop de revision DeepSeek: `docs/DEEPSEEK_REVIEW_LOOP.md`
-- Perfiles de acceso: `docs/PERFILES_ACCESO.md`
+- Arquitectura de seguridad: `docs/arquitectura_seguridad.md`
+- Stack tecnológico: `docs/stack.md`
 
-Estado actual recomendado para manana:
-- Cerrar P0 de reglas/score en matriz
-- Ejecutar pruebas de API y flujo UI
-- Ensayar demo de 10 minutos con preguntas del jurado
+## Verificación Técnica
+
+Comandos usados para validar cambios críticos:
+
+```bash
+python -m py_compile backend/main.py
+python -m py_compile backend/test_invoice_generator.py
+node --check frontend/js/pages/upload.js
+node --check frontend/js/pages/dashboard.js
+node --check frontend/js/pages/siniestros.js
+node --check frontend/js/pages/pendingDetail.js
+node --check frontend/js/pages/auditDetail.js
+node --check frontend/js/main.js
+```
+
+## Seguridad y Ética
+
+- Todos los datos de demo son sintéticos.
+- La plataforma produce alertas de posible riesgo, no acusaciones.
+- La decisión final sigue siendo humana.
+- Flujo de aprobación por roles con trazabilidad.
+- Autenticación HMAC-SHA256 con aislamiento por perfil.
+- Log de auditoría de acciones administrativas.
+- `.env` no debe subirse al repositorio.
+
+## Equipo
+
+Miraclex — HackIAthon 2026  
+Josué Salazar · Andrés Abad · Andrés Falconí

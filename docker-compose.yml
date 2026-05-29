@@ -7,8 +7,10 @@ services:
       - db_data:/app/data
     environment:
       - DATABASE_PATH=/app/data/auditor.db
-      # Optional: set your Google AI key to enable the Gemini engine
-      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      # Optional: DeepSeek API key (via OpenCode Go recommended)
+      - OPENCODE_GO_API_KEY=${OPENCODE_GO_API_KEY:-}
+      - OPENCODE_GO_API_BASE=${OPENCODE_GO_API_BASE:-https://opencode.ai/zen/go/v1}
+      - OPENCODE_GO_MODEL=${OPENCODE_GO_MODEL:-deepseek-v4-flash}
     restart: unless-stopped
 
 volumes:

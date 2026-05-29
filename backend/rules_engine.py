@@ -223,6 +223,10 @@ class QuantityAnomalyRule(BaseRule):
         return findings
 
 
+def _norm_claim_type(s: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", s.strip().lower().replace("í", "i").replace("ó", "o").replace("é", "e").replace("ú", "u"))
+
+
 class IncoherenceRule(BaseRule):
     """Detecta ítems que no corresponden al tipo de siniestro reportado."""
     name = "incoherence"
@@ -233,6 +237,9 @@ class IncoherenceRule(BaseRule):
         items: List[Dict] = context.get("invoice_items", [])
         tariff_map: Dict[str, Dict] = context.get("tariff_map", {})
         claim_type: str = context.get("claim_type", "")
+        claim_cobertura: str = context.get("claim_cobertura", "")
+        norm_claim_type = _norm_claim_type(claim_type)
+        norm_claim_cobertura = _norm_claim_type(claim_cobertura)
 
         for item in items:
             code = item.get("code", "")
@@ -247,7 +254,12 @@ class IncoherenceRule(BaseRule):
             except (json.JSONDecodeError, TypeError):
                 applicable = []
 
-            if applicable and claim_type and claim_type not in applicable:
+            if not applicable:
+                continue
+
+            norm_applicable = [_norm_claim_type(a) for a in applicable]
+            matches = norm_claim_type in norm_applicable or norm_claim_cobertura in norm_applicable
+            if not matches:
                 findings.append(Finding(
                     finding_type=FindingType.INCOHERENCE,
                     severity=FindingSeverity.CRITICAL,
@@ -638,7 +650,7 @@ class TariffMatchByDescriptionRule(BaseRule):
             # Si unit_price >> tariff típico, podría ser un agregado legítimo;
             # marcamos sólo cuando es muy superior (>3x del threshold base) para
             # reducir falsos positivos.
-            if unit_price > threshold * 3:
+            if unit_price > threshold * 1.5:
                 difference = (unit_price - max_price) * qty
                 findings.append(Finding(
                     finding_type=FindingType.OVERCHARGE,

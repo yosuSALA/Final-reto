@@ -5,8 +5,9 @@
   "type": "module",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js"
+    "start": "node scripts/npm-start.cjs",
+    "start:frontend": "node server.js",
+    "dev": "node scripts/npm-start.cjs"
   },
   "dependencies": {
     "express": "^4.19.2",

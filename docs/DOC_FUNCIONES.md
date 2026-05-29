@@ -1,123 +1,290 @@
-# Documentación de Funciones: Auditor Agéntico de Facturación
+# Documentación de Funciones — Miraclex
 
-Este documento describe detalladamente las funciones principales de la aplicación para que cualquier usuario o desarrollador que la descargue entienda de qué va el proyecto y cómo utilizarlo.
+Este documento resume las funciones reales implementadas en la aplicación.
 
-## 🎯 ¿De qué trata esta aplicación?
+## 1. Panel de Auditoría (Dashboard)
 
-Esta aplicación es un **Sistema de Auditoría Agéntico** multi-ramo (vehículos, salud, vida, hogar, generales). Su objetivo es revisar automáticamente las facturas enviadas por los talleres y proveedores para detectar fraudes, errores o cobros excesivos antes de que un agente humano las apruebe para el pago.
+- Muestra el flujo verificable para jurado.
+- Resume propósito, monto estimado a cubrir y control activo.
+- Enlaza hacia Carga, Siniestros y Auditorías.
+- Explica la ruta manual y automática de la demo.
+- Serie temporal de siniestros por día (`GET /api/dashboard/claims-by-day`).
 
-Combina **dos motores complementarios**:
+Endpoints:
 
-1. **Motor de Reglas determinístico** (default, ~1-2 segundos): aplica las reglas de tarifario, duplicados, cantidades anómalas, incoherencia con el siniestro y re-facturación.
-2. **Motor IA DeepSeek V4 Flash** (5-8 segundos): añade razonamiento cualitativo, citación de evidencia y patrones cruzados.
+- `GET /api/dashboard`
+- `GET /api/dashboard/claims-by-day`
 
-> **Importante**: aunque puedas auditar la misma factura primero con reglas y luego con IA, el sistema **no genera dos registros**. Existe un único `AuditResult` por factura, y al re-auditar simplemente se reemplaza su contenido y se actualiza el campo `audit_engine` para reflejar el último motor utilizado. No hay duplicación.
+## 2. Carga y Generación de Documentos
 
----
+Pantalla: `Carga`.
 
-## 🛠️ Funciones Principales
+Funciones:
 
-### 1. Panel de Control (Dashboard)
+- Generar expediente manual completo: declaración, parte policial y factura.
+- Generar solo declaración.
+- Generar solo parte policial.
+- Generar solo factura.
+- Generar expediente automático con IA.
+- Descargar PDFs generados.
+- Cargar PDFs con drag and drop.
+- Resolver automáticamente el siniestro desde referencias `SIN-...`.
 
-- **KPIs en tiempo real**: total de facturas auditadas, monto total facturado, sobrecobro detectado y porcentaje de ahorro estimado para la aseguradora.
-- **Toggle "Incluir TEST"**: por defecto, el dashboard muestra solo facturas reales. Activa el toggle para ver también las facturas de prueba.
-- **Gráficos**: scatter de siniestros diarios + donut de hallazgos por severidad (Crítico / Advertencia / Limpio).
+Endpoints:
 
-### 2. Gestión de Auditorías (Pendientes vs. Revisadas)
+- `POST /api/demo/documents`
+- `POST /api/demo/complete-case`
+- `POST /api/claims/auto/declaration`
+- `POST /api/claims/auto/police-report`
+- `POST /api/audit-pdf`
 
-- **Pendientes**: facturas recién recibidas que aún no han sido auditadas por ningún motor.
-- **Revisadas**: historial con badge del motor usado (⚡ REGLAS o 🤖 IA), risk score y estado.
-- **Búsqueda** por número de factura o nombre de taller.
-- **Filtro TEST**: incluye o excluye facturas de prueba.
-- **Auditoría JIT (Just-In-Time)**: desde una factura pendiente puedes elegir el motor:
-  - ⚡ **Auditar con Reglas** — rápido (~1s), determinístico.
-  - 🤖 **Auditar con IA DeepSeek** — completo (~5-8s), requiere `OPENCODE_GO_API_KEY`.
+## 3. Gestión de Siniestros
 
-### 3. Detalle de Auditoría con Re-auditoría sin Duplicación
+Pantalla: `Siniestros`.
 
-En la vista detalle (`#audit/{id}`):
+Funciones:
 
-- **Badge del motor**: muestra qué motor produjo el resultado actual (REGLAS o IA).
-- **Botones "Re-auditar Reglas" / "Re-auditar IA"**: re-ejecutan el análisis con el motor elegido. El resultado **reemplaza** al anterior — el `audit_id` no cambia, los hallazgos antiguos se borran y se insertan los nuevos.
-- **Acciones manuales**: Aprobar, Rechazar, Escalar.
-- **Reportes PDF**: vista previa del reporte interno con risk score, hallazgos e items de factura.
+- Listar siniestros.
+- Filtrar por tipo, estado y búsqueda.
+- Agrupar por asegurado.
+- Expandir filas para revisar facturas asociadas.
+- Consultar riesgo con DeepSeek V4 Flash según permisos.
+- Abrir workspace del expediente.
+- Importar siniestros desde CSV.
 
-### 4. Motor de Reglas (rápido, default)
+Endpoints principales:
 
-`backend/rules_engine.py` evalúa cinco reglas:
+- `GET /api/claims`
+- `POST /api/claims`
+- `POST /api/claims/import-csv`
 
-- **Sobrecobro**: precio unitario vs tarifario + tolerancia.
-- **Duplicado**: mismo ítem cobrado más de una vez en la misma factura.
-- **Cantidad Anómala**: cantidad fuera del rango esperado del tarifario.
-- **Incoherencia**: ítem que no aplica al tipo de siniestro declarado.
-- **Re-Facturación**: número de factura ya presente en otro siniestro del histórico.
+## 4. Workspace del Siniestro
 
-Calibración: `exceso ≤ tolerancia → INFO`, `tolerancia < exceso ≤ 30% → WARNING`, `exceso > 30% → CRITICAL`.
+Vista centralizada del expediente.
 
-### 5. Motor IA Gemini (opcional)
+Pantalla: `claimWorkspace.js`.
 
-`backend/gemini_auditor.py` aplica patrones SOTA:
+Pestañas principales:
 
-- Chain-of-Thought forzado por orden de campos en schema JSON.
-- Few-shot calibration con 2 ejemplos (limpio + fraude).
-- Citación de evidencia literal del input para cada hallazgo.
-- Confianza calibrada 0.0-1.0; CRITICAL requiere ≥ 0.7.
-- Validación semántica + retry con feedback.
-- Mock mode si falta `GOOGLE_API_KEY` (devuelve respuesta de prueba).
+- Resumen.
+- Expediente.
+- Timeline.
+- Fraude/riesgo.
+- Documentos.
+- Póliza, cliente y vehículo.
 
-### 6. Tarifario Maestro con Tarifarios Manuales
+Endpoints relacionados:
 
-- **Vista**: categorías colapsables (repuesto, pintura, material, mano_obra, servicio).
-- **Modificar precio máximo** de cualquier ítem en línea.
-- ★ **Añadir Tarifario Manual**: form completo con código, descripción, categoría, precio máx, tolerancia %, cantidad mín/máx, y checkboxes para los 8 tipos de siniestro aplicables.
-- ★ **Eliminar Tarifario**: botón por fila (con confirmación).
+- `GET /api/claims/{id}/timeline`
+- `GET /api/claims/{id}/declaration`
+- `GET /api/claims/{id}/police-report`
+- `GET /api/claims/{id}/police-requirement`
+- `GET /api/claims/{id}/invoices`
+- `GET /api/claims/{id}/executive-summary`
+- `GET /api/siniestros/{id}/fraud-score`
 
-### 7. Vista 360° del Siniestro
+## 5. Auditorías
 
-Permite ver un siniestro y todas las facturas asociadas a ese mismo caso, facilitando la detección de re-facturación (intentar cobrar el mismo daño en varias facturas separadas).
+Pantalla: `Auditorías`.
 
-### 8. Generación y Previsualización de Reportes (PDF)
+Funciones:
 
-- **Reporte Interno**: PDF detallado para el auditor humano. Incluye Risk Score, severidad por hallazgo y items con flag ⚠ sobre tarifario.
-- **Notificación al Taller**: PDF profesional sin Risk Score, con la lista de ajustes requeridos y un mensaje ejecutivo. Usa **plantillas predeterminadas**: si la auditoría no tiene `resumen_ejecutivo_taller`, se usa un texto fijo. Esto evita depender de Gemini para el texto narrativo y mantiene los reportes consistentes y rápidos.
+- Ver facturas pendientes.
+- Ejecutar auditoría con DeepSeek V4 Flash.
+- Ejecutar auditoría masiva IA (concurrente).
+- Ejecutar reglas manualmente cuando aplique.
+- Ver auditorías revisadas.
+- Re-auditar desde el detalle.
 
-### 9. Ingreso de Nuevas Facturas (Drag & Drop) con Flag TEST
+Endpoints:
 
-- **Drag-drop**: arrastra una factura PDF; el extractor la procesa y queda **pendiente** de auditoría.
-- ★ **Checkbox "Marcar como factura de prueba (TEST)"**: las facturas TEST entran a la DB y se auditan, pero no aparecen en el dashboard real (filtrables vía toggle).
-- **Anti-duplicado**: `UniqueConstraint(invoice_number, workshop_id)` en DB + flag interno que bloquea cargas concurrentes en el frontend. Si por race condition llega un duplicado, el backend captura el `IntegrityError` y devuelve la factura existente sin crear una nueva.
+- `GET /api/invoices/pending`
+- `POST /api/audit-ai/{invoice_id}`
+- `POST /api/audit-ai-all`
+- `POST /api/audit-deepseek-batch`
+- `POST /api/audit/{invoice_id}`
+- `POST /api/audit-rules/{invoice_id}`
+- `POST /api/audit-all`
+- `GET /api/audit-results`
+- `GET /api/audit-results/{id}`
 
-### 10. Generador Random de Facturas SRI Ecuador
+## 6. Flujo de Decisión Humana
 
-Cada click genera un PDF único con formato SRI: RUC random 13-dígitos, número factura `eee-ppp-sssssssss`, clave de acceso 49-dígitos con módulo 11, fecha aleatoria, items según tipo de siniestro.
+Desde el detalle de auditoría, según el rol del perfil:
 
-Cuatro escenarios:
-- **+ Limpia** — items dentro de tarifario.
-- **+ Sobrecobro** — un ítem +30-65% sobre tarifario.
-- **+ Fraude** — duplicado + ítem incoherente.
-- **+ Aleatorio** — mezcla de los anteriores.
+| Acción | Rol requerido | Precondición |
+|---|---|---|
+| Aprobar | Costos / Contabilidad | Siniestro no escalado |
+| Aprobar (final) | Jefatura | Siniestro previamente escalado |
+| Escalar | Costos / Contabilidad | — |
+| Rechazar | Jefatura | Siniestro previamente escalado |
+| Derivar a Legal | Jefatura | Siniestro en estado escalado |
 
-Cada card del generador tiene **Descargar PDF** y **Auditar directo** (lo inyecta al drag-drop con TEST=on).
+Endpoints:
 
----
+- `POST /api/audit-results/{id}/approve`
+- `POST /api/audit-results/{id}/reject`
+- `POST /api/audit-results/{id}/escalate`
+- `POST /api/audit-results/{id}/send-to-legal`
+- `GET /api/legal/notifications`
 
-## 🚀 ¿Cómo iniciar el proyecto rápidamente?
+## 7. Motor IA DeepSeek V4 Flash
 
-- **En Windows**: doble clic en `start.bat`.
-- **En Mac/Linux**: `bash start.sh`.
+Archivo principal: `backend/deepseek_auditor.py`.
 
-La aplicación queda disponible en `http://localhost:8000/app/`.
+Uso:
 
-Si no configuras `GOOGLE_API_KEY` en `.env`, el motor IA entra en **modo mock** y el motor de reglas funciona sin cambios. El sistema es completamente usable sin Gemini.
+- Auditoría cognitiva de facturas.
+- Explicación de hallazgos.
+- Evaluación de inconsistencias y sobrecobros.
+- Revisión con evidencia del input.
+- Detección cruzada con historial de facturas.
 
----
+Configuración recomendada:
 
-## 🔒 Garantías de No Duplicación
+```env
+OPENCODE_GO_API_KEY=tu_api_key
+OPENCODE_GO_API_BASE=https://opencode.ai/zen/go/v1
+OPENCODE_GO_MODEL=deepseek-v4-flash
+```
 
-El sistema asegura que ninguna re-auditoría genere registros duplicados, en tres niveles:
+Si la IA falla en endpoints críticos de demo, el sistema usa reglas locales como fallback.
 
-1. **DB**: `UniqueConstraint(invoice_number, workshop_id)` en `invoices` impide insertar la misma factura dos veces.
-2. **Backend**: tanto `agent.audit_invoice` (reglas) como `_save_ai_result` (Gemini) hacen **upsert** — si ya existe un `AuditResult` para el invoice, lo actualizan en vez de crear uno nuevo, y borran los hallazgos antiguos antes de insertar los nuevos.
-3. **Frontend**: flag `uploadInFlight` en `upload.js` bloquea cargas concurrentes; el componente de drag-drop solo dispara el upload una vez por archivo.
+## 8. Motor de Reglas
 
-El campo `audit_engine` en cada `AuditResult` siempre refleja el último motor empleado. Si auditas con reglas y luego con IA, verás un único registro con `audit_engine="gemini"` y los hallazgos de Gemini (los de reglas se reemplazaron). Si vuelves a auditar con reglas, se sobrescribe nuevamente. Sin duplicación, sin estado intermedio.
+Archivo principal: `backend/rules_engine.py`.
+
+Uso:
+
+- Fallback técnico si DeepSeek/API no responde.
+- Auditoría manual cuando el usuario lo solicita.
+- Validación determinística de sobrecobros, duplicados, cantidades e incoherencias.
+
+## 9. Chatbot Inteligente
+
+Archivo principal: `backend/chatbot_agent.py`.
+Componente frontend: `frontend/js/components/chatbotBubble.js`.
+
+Funciones:
+
+- Burbuja flotante en esquina inferior derecha.
+- Preguntas en lenguaje natural sobre datos del sistema.
+- Inferencia SQL automática + reescritura con DeepSeek V4 Flash.
+- Restricciones por perfil/rol.
+- Preguntas guiadas + pregunta libre.
+
+Endpoint: `POST /api/agent/query`.
+
+## 10. Inteligencia Operativa
+
+Endpoints:
+
+- `GET /api/intelligence/fraud`
+- `GET /api/intelligence/portfolio`
+- `GET /api/intelligence/operations`
+- `GET /api/intelligence/audit-coverage`
+- `GET /api/intelligence/claim/{claim_id}`
+- `POST /api/intelligence/deepseek-insight`
+
+Funciones:
+
+- Métricas antifraude.
+- Métricas de cartera.
+- Métricas operativas.
+- Cobertura de auditoría.
+- Insight por siniestro.
+- Insight generado por DeepSeek V4 Flash bajo demanda (7 tipos disponibles).
+
+## 11. Scoring de Fraude
+
+Archivo principal: `backend/fraud_scoring.py`.
+
+Funciones:
+
+- 14 señales de fraude (S01–S14) con pesos definidos por rúbrica.
+- 7 reglas de negocio críticas (RF01–RF07).
+- Score normalizado 0–100 con semáforo Verde/Amarillo/Rojo.
+- Ranking por score descendente.
+- Recalculación masiva.
+
+Endpoints:
+
+- `GET /api/siniestros/{id}/fraud-score`
+- `POST /api/siniestros/score-all`
+- `GET /api/siniestros/ranking`
+- `GET /api/fraud-dashboard`
+
+## 12. Reportes PDF
+
+Funciones:
+
+- Reporte interno para auditoría.
+- Notificación al taller.
+- Vista previa desde detalle de auditoría.
+
+Endpoint:
+
+- `GET /api/audit-results/{audit_id}/report-preview`
+
+## 13. Perfiles y Seguridad
+
+Funciones:
+
+- Perfiles con permisos por rol.
+- Tokens HMAC-SHA256 por perfil.
+- Contraseñas con hash y salt.
+- Modo administrador para testing.
+- Clave maestra configurable (`ADMIN_PASSWORD`).
+- Auditoría de acciones administrativas.
+
+Endpoints principales:
+
+- `GET /api/profiles`
+- `POST /api/profiles`
+- `POST /api/profiles/{profile_id}/token`
+- `POST /api/profiles/admin-login`
+- `PUT /api/profiles/{profile_id}`
+- `PUT /api/profiles/{profile_id}/password`
+- `DELETE /api/profiles/{profile_id}`
+
+## 14. Panel de Administración
+
+Funciones:
+
+- Log de auditoría de todas las acciones del sistema.
+- Filtrado por acción y perfil.
+- Estadísticas agregadas.
+- Solo accesible para el perfil administrador.
+
+Endpoints:
+
+- `GET /api/admin/audit-log`
+- `GET /api/admin/audit-log/stats`
+
+## 15. Tarifario
+
+Pantalla: `Tarifario`.
+
+Funciones:
+
+- CRUD de entradas del tarifario maestro.
+- Importación masiva desde CSV.
+- Tolerancia porcentual configurable por repuesto.
+
+Endpoints:
+
+- `GET /api/tariffs`
+- `POST /api/tariffs`
+- `PUT /api/tariffs/{id}`
+- `DELETE /api/tariffs/{id}`
+- `POST /api/tariffs/import-csv`
+
+## 16. Garantías de Demo
+
+- No depende de rutas locales externas.
+- Los PDFs demo se generan en `backend/test_pdfs`.
+- El flujo manual y automático están disponibles desde la UI.
+- La IA (DeepSeek V4 Flash) es el motor principal.
+- Las reglas no reemplazan a DeepSeek salvo fallback o acción manual.
+- La decisión final siempre es humana.
+- Todas las acciones se registran en el log de auditoría.

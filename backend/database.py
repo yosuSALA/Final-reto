@@ -85,7 +85,7 @@ def _migrate_columns():
         ("tariff_items", "profile_id", f"VARCHAR(36) REFERENCES profiles(id)"),
         ("audit_results", "profile_id", f"VARCHAR(36) REFERENCES profiles(id)"),
         # Flujo de 6 etapas (Declaración + Parte Policial + Factura)
-        ("audit_results", "audit_stage", "VARCHAR(20) DEFAULT 'legacy'"),
+        ("audit_results", "audit_stage", "VARCHAR(20) DEFAULT 'LEGACY'"),
     ]
 
     with engine.begin() as conn:
@@ -159,6 +159,21 @@ def _migrate_columns():
                 # para diagnóstico (la auditoría INITIAL fallará al insertar).
                 import sys as _sys
                 print(f"[migrate] audit_results invoice_id->NULL falló: {e}", file=_sys.stderr)
+
+        # Versiones anteriores guardaban AuditStage por su value en minúscula
+        # (legacy/initial/post_payment), mientras SQLAlchemy Enum lee los names
+        # (LEGACY/INITIAL/POST_PAYMENT). Normalizar evita errores 500 al cargar.
+        try:
+            conn.execute(text(
+                "UPDATE audit_results SET audit_stage = CASE audit_stage "
+                "WHEN 'legacy' THEN 'LEGACY' "
+                "WHEN 'initial' THEN 'INITIAL' "
+                "WHEN 'post_payment' THEN 'POST_PAYMENT' "
+                "ELSE audit_stage END "
+                "WHERE audit_stage IN ('legacy', 'initial', 'post_payment')"
+            ))
+        except Exception:
+            pass
 
 
 def _ensure_default_profile():

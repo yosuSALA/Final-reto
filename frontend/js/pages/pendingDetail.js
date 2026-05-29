@@ -11,18 +11,18 @@ export async function loadPendingDetail(invoiceId) {
         </button>
         <div class="detail-header" style="justify-content:center; flex-direction:column; align-items:center; padding:40px 24px; text-align:center;">
             <h1>Factura #${invoiceId} lista para auditoría</h1>
-            <p style="color:var(--text-muted); margin-bottom:24px;">Elige el motor de auditoría:</p>
+            <p style="color:var(--text-muted); margin-bottom:24px;">Motor predeterminado: IA DeepSeek. Usa reglas solo si quieres forzar revisión determinística.</p>
             <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
-                <button class="btn btn-success" id="btn-jit-rules" onclick="triggerRulesAudit(${invoiceId})" style="font-size:1.05rem; padding:12px 24px;">
-                    ⚡ Auditar con Reglas (rápido, 1-2s)
-                </button>
                 <button class="btn btn-primary" id="btn-jit-ai" onclick="triggerJitAudit(${invoiceId})" style="font-size:1.05rem; padding:12px 24px;">
-                    🤖 Auditar con Agente de IA
+                    Auditar con IA DeepSeek
+                </button>
+                <button class="btn btn-ghost" id="btn-jit-rules" onclick="triggerRulesAudit(${invoiceId})" style="font-size:0.95rem; padding:12px 20px;">
+                    Usar reglas manualmente
                 </button>
             </div>
+            <div id="jit-audit-status" style="display:none;margin-top:18px;padding:12px 14px;border-radius:8px;background:rgba(99,102,241,0.08);color:var(--accent-indigo);font-weight:600;"></div>
             <p style="color:var(--text-muted); font-size:0.8rem; margin-top:14px;">
-                Reglas usa el motor determinístico (tarifario + cantidades + duplicados + coherencia).<br>
-                El agente de IA añade razonamiento avanzado con DeepSeek v4 Flash.
+                La IA añade razonamiento avanzado con DeepSeek v4 Flash. Reglas es fallback/manual.
             </p>
         </div>
     `;
@@ -34,6 +34,7 @@ export async function triggerRulesAudit(invoiceId) {
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner"></span> Auditando con reglas...';
     }
+    setJitStatus("Auditando manualmente con motor de reglas...");
     const result = await apiPost(`/audit-rules/${invoiceId}`);
     if (result) {
         showToast(`Auditoría rápida completada (motor: reglas)`, "success");
@@ -50,12 +51,21 @@ export async function triggerJitAudit(invoiceId) {
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner"></span> Auditando con IA...';
     }
+    setJitStatus("DeepSeek está auditando la factura. No cierres esta pantalla...");
     const result = await apiPost(`/audit-ai/${invoiceId}`);
     if (result) {
+        setJitStatus("Auditoría IA completada. Abriendo resultado actualizado...");
         showToast("Auditoría IA completada", "success");
         location.hash = `audit/${result.audit_id}`;
     } else if (btn) {
         btn.disabled = false;
         btn.innerHTML = '🤖 Reintentar con IA';
     }
+}
+
+function setJitStatus(message) {
+    const el = document.getElementById("jit-audit-status");
+    if (!el) return;
+    el.style.display = "block";
+    el.innerHTML = `<span class="spinner"></span> ${message}`;
 }

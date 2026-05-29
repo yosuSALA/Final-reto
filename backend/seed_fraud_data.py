@@ -352,11 +352,15 @@ def seed_fraud_data(db: Session):
         else:
             doc_completos = 1
 
+        # Para el patrón de ramo inconsistente (i=9), forzar ramo vehicular
+        # aunque la póliza sea de SALUD
+        effective_ramo = Ramo.VEHICULOS if i == 9 else pol.ramo
+
         claim = Siniestro(
             profile_id=PID,
             id_poliza=pol.id_poliza,
             id_asegurado=pol.id_asegurado,
-            ramo=pol.ramo,
+            ramo=effective_ramo,
             cobertura=cobertura,
             fecha_ocurrencia=fecha_ocurrencia,
             fecha_reporte=fecha_reporte,
