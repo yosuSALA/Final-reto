@@ -1,8 +1,10 @@
-import { apiFetch, apiPost } from "../api.js";
+﻿import { apiFetch, apiPost } from "../api.js";
 import { renderRiskBadge, renderStatusBadge, showToast } from "../utils.js";
 import { state } from "../state.js";
 
 let _activeTab = "summary";
+let _expedienteTab = "declaration";
+const expedienteCache = {};
 
 function labelFromPayload(value) {
     if (typeof value === "string") return value;
@@ -16,7 +18,7 @@ export async function loadClaimWorkspace(claimId) {
     const page = document.getElementById("page-claim-workspace");
     if (!page) return;
 
-    page.innerHTML = `<div class="intel-loading"><div class="intel-spinner"></div><p>Cargando espacio de investigación...</p></div>`;
+    page.innerHTML = `<div class="intel-loading"><div class="intel-spinner"></div><p>Cargando espacio de investigaciÃ³n...</p></div>`;
 
     const data = await apiFetch(`/intelligence/claim/${claimId}`);
     if (!data) {
@@ -63,15 +65,15 @@ function render(page, data) {
 
             <div class="workspace-meta">
                 <div class="workspace-meta-row"><span>Estado</span><strong>${claim.estado}</strong></div>
-                <div class="workspace-meta-row"><span>Sucursal</span><strong>${claim.sucursal || "—"}</strong></div>
+                <div class="workspace-meta-row"><span>Sucursal</span><strong>${claim.sucursal || "â€”"}</strong></div>
                 <div class="workspace-meta-row"><span>Monto Reclamado</span><strong>$${fmt(claim.amount_claimed)}</strong></div>
                 <div class="workspace-meta-row"><span>Monto Pagado</span><strong>$${fmt(claim.amount_paid)}</strong></div>
-                <div class="workspace-meta-row"><span>Días SLA</span><strong style="color:${claim.days_delay>30?'#ef4444':claim.days_delay>15?'#f59e0b':'#10b981'}">${claim.days_delay}d</strong></div>
+                <div class="workspace-meta-row"><span>DÃ­as SLA</span><strong style="color:${claim.days_delay>30?'#ef4444':claim.days_delay>15?'#f59e0b':'#10b981'}">${claim.days_delay}d</strong></div>
                 <div class="workspace-meta-row"><span>Documentos</span><strong style="color:${claim.docs_complete?'#10b981':'#f59e0b'}">${claim.docs_complete ? "Completos" : "Incompletos"}</strong></div>
             </div>
 
             <div class="workspace-nav">
-                ${["summary", "timeline", "fraud", "documents", "policy", "customer", "vehicle", "audit-trail"].map(t =>
+                ${["summary", "expediente", "timeline", "fraud", "documents", "policy", "customer", "vehicle", "audit-trail"].map(t =>
                     `<button class="workspace-tab-btn ${_activeTab === t ? "active" : ""}" onclick="switchWorkspaceTab('${t}','${claim.id}')">${tabLabel(t)}</button>`
                 ).join("")}
             </div>
@@ -97,9 +99,19 @@ export function switchWorkspaceTab(tab, claimId) {
     });
 }
 
+export function switchExpedienteTab(tab, claimId) {
+    _expedienteTab = tab;
+    const main = document.getElementById("workspace-main");
+    if (!main) return;
+    apiFetch(`/intelligence/claim/${claimId}`).then(data => {
+        if (data) main.innerHTML = renderExpediente(data);
+    });
+}
+
 function renderTab(tab, data) {
     switch (tab) {
         case "summary":    return renderSummary(data);
+        case "expediente": return renderExpediente(data);
         case "timeline":   return renderTimeline(data);
         case "fraud":      return renderFraudAnalysis(data);
         case "documents":  return renderDocuments(data);
@@ -120,14 +132,14 @@ function renderSummary(data) {
         <h3 class="workspace-section-title">Resumen del Siniestro</h3>
         <div class="workspace-summary-grid">
             <div class="workspace-summary-card">
-                <h4>Estado de Auditoría</h4>
+                <h4>Estado de AuditorÃ­a</h4>
                 ${audit?.id ? `
                 <p>${renderStatusBadge(audit.status)}</p>
                 <p>Score: ${renderRiskBadge(audit.risk_score)}</p>
                 <p>Sobrecosto detectado: <strong>$${fmt(audit.total_overcharge)}</strong></p>
                 <p>Motor: <span class="badge badge-info">${audit.engine}</span></p>
                 ${audit.summary ? `<p style="margin-top:8px;color:var(--text-secondary);font-size:0.85rem">${audit.summary}</p>` : ""}
-                ` : '<p style="color:var(--text-muted)">Sin auditoría registrada</p>'}
+                ` : '<p style="color:var(--text-muted)">Sin auditorÃ­a registrada</p>'}
             </div>
 
             <div class="workspace-summary-card">
@@ -135,7 +147,7 @@ function renderSummary(data) {
                 ${findings.length === 0
                     ? '<p style="color:var(--text-muted)">Sin hallazgos registrados</p>'
                     : `<div class="intel-kpi-mini-grid">
-                        <div style="color:#ef4444"><strong>${critical}</strong> críticos</div>
+                        <div style="color:#ef4444"><strong>${critical}</strong> crÃ­ticos</div>
                         <div style="color:#f59e0b"><strong>${warning}</strong> advertencia</div>
                         <div style="color:#10b981"><strong>${findings.length - critical - warning}</strong> limpios</div>
                        </div>
@@ -172,7 +184,7 @@ function renderTimeline(data) {
     const { timeline, claim } = data;
     return `
     <div class="workspace-section">
-        <h3 class="workspace-section-title">Línea de Tiempo</h3>
+        <h3 class="workspace-section-title">LÃ­nea de Tiempo</h3>
         <div class="workspace-timeline">
             ${timeline.map((e, i) => `
             <div class="workspace-timeline-item ${i === timeline.length - 1 ? 'last' : ''}">
@@ -190,7 +202,7 @@ function renderFraudAnalysis(data) {
     const { claim, findings } = data;
     return `
     <div class="workspace-section">
-        <h3 class="workspace-section-title">Análisis de Fraude</h3>
+        <h3 class="workspace-section-title">AnÃ¡lisis de Fraude</h3>
 
         <div class="workspace-fraud-header">
             <div class="workspace-fraud-score-display" style="color:${scoreColorByClass(claim.fraud_classification)}">
@@ -198,26 +210,26 @@ function renderFraudAnalysis(data) {
                 <span>/ 100</span>
             </div>
             <div>
-                <p><strong>Clasificación:</strong> ${claim.fraud_classification}</p>
+                <p><strong>ClasificaciÃ³n:</strong> ${claim.fraud_classification}</p>
                 <p><strong>Reglas fallidas:</strong> ${claim.rules_failed?.length ?? 0}</p>
-                <p><strong>Beneficiario:</strong> ${claim.beneficiary || "—"}</p>
+                <p><strong>Beneficiario:</strong> ${claim.beneficiary || "â€”"}</p>
             </div>
         </div>
 
         ${claim.fraud_indicators?.length > 0 ? `
         <h4 style="margin:16px 0 8px">Indicadores Detectados</h4>
         <div class="workspace-indicators-list">
-            ${claim.fraud_indicators.map(i => `<div class="intel-indicator-full"><span class="intel-ind-bullet">⚠</span>${labelFromPayload(i)}</div>`).join("")}
+            ${claim.fraud_indicators.map(i => `<div class="intel-indicator-full"><span class="intel-ind-bullet">âš </span>${labelFromPayload(i)}</div>`).join("")}
         </div>` : ""}
 
         ${claim.rules_failed?.length > 0 ? `
         <h4 style="margin:16px 0 8px">Reglas Incumplidas</h4>
         <div class="workspace-rules-list">
-            ${claim.rules_failed.map(r => `<div class="workspace-rule-fail"><span>✗</span><span>${labelFromPayload(r)}</span></div>`).join("")}
+            ${claim.rules_failed.map(r => `<div class="workspace-rule-fail"><span>âœ—</span><span>${labelFromPayload(r)}</span></div>`).join("")}
         </div>` : ""}
 
         ${findings.length > 0 ? `
-        <h4 style="margin:16px 0 8px">Hallazgos de Auditoría</h4>
+        <h4 style="margin:16px 0 8px">Hallazgos de AuditorÃ­a</h4>
         ${findings.map(f => `
         <div class="workspace-finding ${f.severity}">
             <div class="workspace-finding-header">
@@ -244,52 +256,113 @@ function renderDocuments(data) {
     <div class="workspace-section">
         <h3 class="workspace-section-title">Documentos del Expediente</h3>
         <table>
-            <thead><tr><th>Tipo</th><th>Entregado</th><th>Legible</th><th>Inconsistencia</th><th>Observación</th></tr></thead>
+            <thead><tr><th>Tipo</th><th>Entregado</th><th>Legible</th><th>Inconsistencia</th><th>ObservaciÃ³n</th></tr></thead>
             <tbody>
                 ${documents.map(d => `
                 <tr>
                     <td>${d.type}</td>
-                    <td>${d.delivered ? '<span class="badge badge-success">Sí</span>' : '<span class="badge badge-danger">No</span>'}</td>
-                    <td>${d.legible ? '<span class="badge badge-success">Sí</span>' : '<span class="badge badge-warning">No</span>'}</td>
+                    <td>${d.delivered ? '<span class="badge badge-success">SÃ­</span>' : '<span class="badge badge-danger">No</span>'}</td>
+                    <td>${d.legible ? '<span class="badge badge-success">SÃ­</span>' : '<span class="badge badge-warning">No</span>'}</td>
                     <td>${d.inconsistency ? '<span class="badge badge-danger">Detectada</span>' : '<span class="badge badge-success">OK</span>'}</td>
-                    <td><small>${d.observation || "—"}</small></td>
+                    <td><small>${d.observation || "â€”"}</small></td>
                 </tr>`).join("")}
             </tbody>
         </table>
     </div>`;
 }
 
-function renderPolicy(data) {
-    const { policy } = data;
-    if (!policy || !policy.id) return `<div class="workspace-section"><h3 class="workspace-section-title">Póliza</h3><div class="intel-empty">Sin información de póliza</div></div>`;
+function renderExpediente(data) {
+    const claimId = data.claim.id;
+    setTimeout(() => loadExpedienteDocs(claimId), 0);
+    const tabs = [["declaration", "Declaracion"], ["police", "Parte Policial"], ["invoices", "Facturas"], ["audits", "Auditorias"]];
     return `
     <div class="workspace-section">
-        <h3 class="workspace-section-title">Información de Póliza</h3>
+        <h3 class="workspace-section-title">Expediente</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+            ${tabs.map(([id, label]) => `<button class="btn btn-sm ${_expedienteTab === id ? "btn-primary" : "btn-ghost"}" onclick="switchExpedienteTab('${id}', '${claimId}')">${label}</button>`).join("")}
+        </div>
+        <div id="expediente-content">${renderExpedienteTab(data)}</div>
+    </div>`;
+}
+
+function renderExpedienteTab(data) {
+    const claimId = data.claim.id;
+    if (_expedienteTab === "declaration") return renderDocDict(expedienteCache[claimId]?.declaration, "declaration", "No hay declaracion cargada para este siniestro.");
+    if (_expedienteTab === "police") return renderDocDict(expedienteCache[claimId]?.police, "police_report", "No hay parte policial cargado para este siniestro.");
+    if (_expedienteTab === "invoices") {
+        return data.invoices.length ? `<table><thead><tr><th>Factura</th><th>Taller</th><th>Total</th><th>Estado</th><th>Riesgo</th></tr></thead><tbody>${data.invoices.map(inv => `<tr><td>${inv.invoice_number}</td><td>${inv.workshop || "-"}</td><td>$${fmt(inv.total)}</td><td>${renderStatusBadge(inv.audit_status)}</td><td>${inv.risk_score == null ? "-" : renderRiskBadge(inv.risk_score)}</td></tr>`).join("")}</tbody></table>` : `<div class="intel-empty">Sin facturas cargadas</div>`;
+    }
+    return data.audit_trail.length ? `<table><thead><tr><th>ID</th><th>Etapa</th><th>Motor</th><th>Score</th><th>Estado</th><th>Fecha</th></tr></thead><tbody>${data.audit_trail.map(a => `<tr class="clickable" onclick="location.hash='audit/${a.audit_id}'"><td>#${a.audit_id}</td><td>${stageLabel(a.audit_stage)}</td><td>${a.engine}</td><td>${renderRiskBadge(a.risk_score)}</td><td>${renderStatusBadge(a.status)}</td><td>${fmtDateFull(a.audited_at)}</td></tr>`).join("")}</tbody></table>` : `<div class="intel-empty">Sin auditorias registradas</div>`;
+}
+
+async function loadExpedienteDocs(claimId) {
+    if (expedienteCache[claimId]?.loaded) return;
+    expedienteCache[claimId] = expedienteCache[claimId] || {};
+    const [declaration, police] = await Promise.all([
+        apiFetch(`/claims/${claimId}/declaration`),
+        apiFetch(`/claims/${claimId}/police-report`),
+    ]);
+    expedienteCache[claimId] = { declaration, police, loaded: true };
+    const content = document.getElementById("expediente-content");
+    if (content && _activeTab === "expediente") {
+        apiFetch(`/intelligence/claim/${claimId}`).then(data => {
+            if (data) content.innerHTML = renderExpedienteTab(data);
+        });
+    }
+}
+
+function renderDocDict(response, key, emptyText) {
+    if (!response) return `<div style="display:flex;align-items:center;gap:8px;color:var(--text-muted);"><span class="spinner"></span> Cargando documento...</div>`;
+    const doc = response[key];
+    if (!doc) return `<div class="intel-empty">${emptyText}</div>`;
+    return `<div class="workspace-detail-grid">${flattenDoc(doc).slice(0, 40).map(([k, v]) => `<div class="workspace-detail-row"><span>${k}</span><strong>${v || "-"}</strong></div>`).join("")}</div>`;
+}
+
+function flattenDoc(obj, prefix = "") {
+    const rows = [];
+    for (const [key, value] of Object.entries(obj || {})) {
+        const label = prefix ? `${prefix}.${key}` : key;
+        if (value && typeof value === "object" && !Array.isArray(value)) rows.push(...flattenDoc(value, label));
+        else if (!Array.isArray(value)) rows.push([label.replace(/_/g, " "), value]);
+    }
+    return rows;
+}
+
+function stageLabel(stage) {
+    return ({ initial: "Inicial", post_payment: "Post-Pago", legacy: "Legacy" })[stage] || "Legacy";
+}
+
+function renderPolicy(data) {
+    const { policy } = data;
+    if (!policy || !policy.id) return `<div class="workspace-section"><h3 class="workspace-section-title">PÃ³liza</h3><div class="intel-empty">Sin informaciÃ³n de pÃ³liza</div></div>`;
+    return `
+    <div class="workspace-section">
+        <h3 class="workspace-section-title">InformaciÃ³n de PÃ³liza</h3>
         <div class="workspace-detail-grid">
-            <div class="workspace-detail-row"><span>ID Póliza</span><strong>${policy.id}</strong></div>
+            <div class="workspace-detail-row"><span>ID PÃ³liza</span><strong>${policy.id}</strong></div>
             <div class="workspace-detail-row"><span>Ramo</span><strong>${policy.ramo}</strong></div>
             <div class="workspace-detail-row"><span>Prima</span><strong>$${fmt(policy.prima)}</strong></div>
             <div class="workspace-detail-row"><span>Suma Asegurada</span><strong>$${fmt(policy.suma_asegurada)}</strong></div>
             <div class="workspace-detail-row"><span>Deducible</span><strong>$${fmt(policy.deducible)}</strong></div>
-            <div class="workspace-detail-row"><span>Estado</span><strong>${policy.estado || "—"}</strong></div>
-            <div class="workspace-detail-row"><span>Canal de Venta</span><strong>${policy.canal || "—"}</strong></div>
+            <div class="workspace-detail-row"><span>Estado</span><strong>${policy.estado || "â€”"}</strong></div>
+            <div class="workspace-detail-row"><span>Canal de Venta</span><strong>${policy.canal || "â€”"}</strong></div>
         </div>
     </div>`;
 }
 
 function renderCustomer(data) {
     const { customer, customer_history } = data;
-    if (!customer || !customer.id) return `<div class="workspace-section"><h3 class="workspace-section-title">Cliente</h3><div class="intel-empty">Sin información del cliente</div></div>`;
+    if (!customer || !customer.id) return `<div class="workspace-section"><h3 class="workspace-section-title">Cliente</h3><div class="intel-empty">Sin informaciÃ³n del cliente</div></div>`;
     return `
     <div class="workspace-section">
         <h3 class="workspace-section-title">Perfil del Cliente</h3>
         <div class="workspace-detail-grid">
             <div class="workspace-detail-row"><span>Nombre</span><strong>${customer.name || customer.id}</strong></div>
-            <div class="workspace-detail-row"><span>Segmento</span><strong>${customer.segment || "—"}</strong></div>
-            <div class="workspace-detail-row"><span>Ciudad</span><strong>${customer.city || "—"}</strong></div>
+            <div class="workspace-detail-row"><span>Segmento</span><strong>${customer.segment || "â€”"}</strong></div>
+            <div class="workspace-detail-row"><span>Ciudad</span><strong>${customer.city || "â€”"}</strong></div>
             <div class="workspace-detail-row"><span>Reclamaciones (12m)</span><strong style="color:${(customer.claims_12m||0)>2?'#ef4444':'inherit'}">${customer.claims_12m || 0}</strong></div>
             <div class="workspace-detail-row"><span>Score de Cliente</span><strong>${customer.score || 0}</strong></div>
-            <div class="workspace-detail-row"><span>Total siniestros históricos</span><strong>${customer.total_claims || 0}</strong></div>
+            <div class="workspace-detail-row"><span>Total siniestros histÃ³ricos</span><strong>${customer.total_claims || 0}</strong></div>
         </div>
 
         ${customer_history?.length > 0 ? `
@@ -312,17 +385,17 @@ function renderCustomer(data) {
 
 function renderVehicle(data) {
     const { vehicle, claim } = data;
-    if (!vehicle || !vehicle.plate) return `<div class="workspace-section"><h3 class="workspace-section-title">Vehículo</h3><div class="intel-empty">Sin información del vehículo</div></div>`;
+    if (!vehicle || !vehicle.plate) return `<div class="workspace-section"><h3 class="workspace-section-title">VehÃ­culo</h3><div class="intel-empty">Sin informaciÃ³n del vehÃ­culo</div></div>`;
     return `
     <div class="workspace-section">
-        <h3 class="workspace-section-title">Vehículo Asegurado</h3>
+        <h3 class="workspace-section-title">VehÃ­culo Asegurado</h3>
         <div class="workspace-vehicle-card">
             <div class="workspace-vehicle-plate">${vehicle.plate}</div>
             <div class="workspace-detail-grid">
-                <div class="workspace-detail-row"><span>Marca</span><strong>${vehicle.brand || "—"}</strong></div>
-                <div class="workspace-detail-row"><span>Modelo</span><strong>${vehicle.model || "—"}</strong></div>
-                <div class="workspace-detail-row"><span>Año</span><strong>${vehicle.year || "—"}</strong></div>
-                <div class="workspace-detail-row"><span>Chasis</span><strong>${vehicle.chasis || "—"}</strong></div>
+                <div class="workspace-detail-row"><span>Marca</span><strong>${vehicle.brand || "â€”"}</strong></div>
+                <div class="workspace-detail-row"><span>Modelo</span><strong>${vehicle.model || "â€”"}</strong></div>
+                <div class="workspace-detail-row"><span>AÃ±o</span><strong>${vehicle.year || "â€”"}</strong></div>
+                <div class="workspace-detail-row"><span>Chasis</span><strong>${vehicle.chasis || "â€”"}</strong></div>
                 <div class="workspace-detail-row"><span>Cobertura</span><strong>${claim.cobertura}</strong></div>
             </div>
         </div>
@@ -331,10 +404,10 @@ function renderVehicle(data) {
 
 function renderAuditTrail(data) {
     const { audit_trail } = data;
-    if (!audit_trail || audit_trail.length === 0) return `<div class="workspace-section"><h3 class="workspace-section-title">Rastro de Auditoría</h3><div class="intel-empty">Sin historial de auditorías</div></div>`;
+    if (!audit_trail || audit_trail.length === 0) return `<div class="workspace-section"><h3 class="workspace-section-title">Rastro de AuditorÃ­a</h3><div class="intel-empty">Sin historial de auditorÃ­as</div></div>`;
     return `
     <div class="workspace-section">
-        <h3 class="workspace-section-title">Rastro de Auditoría</h3>
+        <h3 class="workspace-section-title">Rastro de AuditorÃ­a</h3>
         <table>
             <thead><tr><th>ID</th><th>Motor</th><th>Score</th><th>Estado</th><th>Sobrecosto</th><th>Revisor</th><th>Fecha</th></tr></thead>
             <tbody>
@@ -345,7 +418,7 @@ function renderAuditTrail(data) {
                     <td>${renderRiskBadge(a.risk_score)}</td>
                     <td>${renderStatusBadge(a.status)}</td>
                     <td style="color:${a.total_overcharge>0?'#ef4444':'#10b981'}">$${fmt(a.total_overcharge)}</td>
-                    <td>${a.reviewed_by || "—"}</td>
+                    <td>${a.reviewed_by || "â€”"}</td>
                     <td>${fmtDateFull(a.audited_at)}</td>
                 </tr>`).join("")}
             </tbody>
@@ -353,13 +426,13 @@ function renderAuditTrail(data) {
     </div>`;
 }
 
-// ── Helpers ────────────────────────────────────────────
+// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function tabLabel(t) {
     const labels = {
-        summary: "Resumen", timeline: "Línea de Tiempo", fraud: "Análisis Fraude",
-        documents: "Documentos", policy: "Póliza", customer: "Cliente",
-        vehicle: "Vehículo", "audit-trail": "Rastro Auditoría",
+        summary: "Resumen", timeline: "LÃ­nea de Tiempo", fraud: "AnÃ¡lisis Fraude",
+        expediente: "Expediente", documents: "Documentos", policy: "Poliza", customer: "Cliente",
+        vehicle: "VehÃ­culo", "audit-trail": "Rastro AuditorÃ­a",
     };
     return labels[t] || t;
 }
@@ -367,9 +440,9 @@ function tabLabel(t) {
 function fmt(n) { return (n || 0).toLocaleString("es-EC", { minimumFractionDigits: 0, maximumFractionDigits: 0 }); }
 
 function fmtDateFull(iso) {
-    if (!iso) return "—";
+    if (!iso) return "â€”";
     try { return new Date(iso).toLocaleDateString("es-EC", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }); }
-    catch { return "—"; }
+    catch { return "â€”"; }
 }
 
 function scoreColorByClass(cl) {

@@ -1,4 +1,4 @@
-import { apiFetch, apiPost, API } from "../api.js";
+﻿import { apiFetch, apiPost, API } from "../api.js";
 import { showToast, renderStatusBadge } from "../utils.js";
 import { getPermissions } from "../auth.js";
 import { state } from "../state.js";
@@ -10,28 +10,32 @@ export async function loadAuditDetail(auditId) {
         page.innerHTML = `
             <button class="back-btn" onclick="location.hash='auditorias'">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-                Volver a Auditorías
+                Volver a AuditorÃ­as
             </button>
             <div class="empty-state">
-                <h3>No se pudo abrir esta auditoría</h3>
+                <h3>No se pudo abrir esta auditorÃ­a</h3>
                 <p>Puede haber sido eliminada o no pertenece al perfil activo. Vuelve a cargar la lista de revisadas.</p>
-                <button class="btn btn-primary" onclick="location.hash='auditorias'">Ver auditorías</button>
+                <button class="btn btn-primary" onclick="location.hash='auditorias'">Ver auditorÃ­as</button>
             </div>`;
         return;
     }
     const perms = getPermissions();
     const isEscalated = data.status === "escalated" || data.status === "sent_to_legal";
-    // Costos / Contabilidad sólo deciden cuando el siniestro aún no está escalado.
+    // Costos / Contabilidad sÃ³lo deciden cuando el siniestro aÃºn no estÃ¡ escalado.
     const showInitialActions = !isEscalated && (perms.canApproveInitial || perms.canEscalate);
-    // Jefatura sólo decide cuando el siniestro está escalado (no enviado a Legal aún).
+    // Jefatura sÃ³lo decide cuando el siniestro estÃ¡ escalado (no enviado a Legal aÃºn).
     const showFinalActions = perms.canFinalDecision && data.status === "escalated";
     const riskColor = data.risk_score >= 70 ? "#ef4444" : data.risk_score >= 30 ? "#f59e0b" : "#10b981";
     const circumference = 2 * Math.PI * 45;
     const dashLen = (data.risk_score / 100) * circumference;
     const engine = data.audit_engine || "rules";
     const isAIEngine = engine !== "rules";
-    const engineLabel = isAIEngine ? "🤖 Agente de IA" : "⚡ Reglas";
+    const engineLabel = isAIEngine ? "ðŸ¤– Agente de IA" : "âš¡ Reglas";
     const engineColor = isAIEngine ? "var(--accent-indigo)" : "var(--accent-emerald)";
+    const stage = data.audit_stage || "legacy";
+    const isInitialStage = stage === "initial";
+    const stageInfo = auditStageInfo(stage);
+    const itemColspan = isInitialStage ? 5 : 6;
     page.innerHTML = `
         <button class="back-btn" onclick="location.hash='auditorias'">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
@@ -39,8 +43,9 @@ export async function loadAuditDetail(auditId) {
         </button>
         <div class="detail-header">
             <div class="detail-info">
-                <h1>Auditoria #${data.audit_id} — ${data.invoice_number}
+                <h1>Auditoria #${data.audit_id} â€” ${data.invoice_number}
                     <span class="badge" style="background:${engineColor};color:white;font-size:0.7rem;margin-left:8px;vertical-align:middle;">${engineLabel}</span>
+                    <span class="badge" style="background:${stageInfo.color};color:white;font-size:0.7rem;margin-left:6px;vertical-align:middle;">${stageInfo.label}</span>
                 </h1>
                 <div class="detail-meta">
                     <div class="detail-meta-item"><strong>Siniestro:</strong> ${data.claim_number}</div>
@@ -54,12 +59,12 @@ export async function loadAuditDetail(auditId) {
                 </div>
             </div>
             <div class="detail-actions">
-                <button class="btn btn-info btn-sm" onclick="reAuditWith(${data.invoice_id}, 'rules')" style="background-color: var(--accent-emerald); color: white;" title="Re-auditar con motor de reglas (rápido)">⚡ Re-auditar Reglas</button>
-                <button class="btn btn-info btn-sm" onclick="reAuditWith(${data.invoice_id}, 'deepseek')" style="background-color: var(--accent-indigo); color: white;" title="Re-auditar con agente DeepSeek">🤖 Re-auditar IA</button>
+                ${data.invoice_id ? `<button class="btn btn-info btn-sm" onclick="reAuditWith(${data.invoice_id}, 'rules')" style="background-color: var(--accent-emerald); color: white;" title="Re-auditar con motor de reglas">Re-auditar Reglas</button>` : ""}
+                ${data.invoice_id ? `<button class="btn btn-info btn-sm" onclick="reAuditWith(${data.invoice_id}, 'deepseek')" style="background-color: var(--accent-indigo); color: white;" title="Re-auditar con agente DeepSeek">Re-auditar IA</button>` : ""}
                 <button class="btn btn-info btn-sm" onclick="previewReport(${data.audit_id})" style="background-color: #475569; color: white;">Reporte Interno</button>
-                ${showInitialActions && perms.canApproveInitial ? `<button class="btn btn-success btn-sm" onclick="auditAction(${data.audit_id}, 'approve')" title="Aprobación inicial (Costos / Contabilidad)">Aprobar</button>` : ""}
-                ${showInitialActions && perms.canEscalate ? `<button class="btn btn-warning btn-sm" onclick="auditAction(${data.audit_id}, 'escalate')" title="Escalar a Jefatura para revisión cautelosa">Escalar</button>` : ""}
-                ${showFinalActions ? `<button class="btn btn-success btn-sm" onclick="auditAction(${data.audit_id}, 'approve')" title="Aprobación final (Jefatura)">Aprobar (final)</button>` : ""}
+                ${showInitialActions && perms.canApproveInitial ? `<button class="btn btn-success btn-sm" onclick="auditAction(${data.audit_id}, 'approve')" title="AprobaciÃ³n inicial (Costos / Contabilidad)">Aprobar</button>` : ""}
+                ${showInitialActions && perms.canEscalate ? `<button class="btn btn-warning btn-sm" onclick="auditAction(${data.audit_id}, 'escalate')" title="Escalar a Jefatura para revisiÃ³n cautelosa">Escalar</button>` : ""}
+                ${showFinalActions ? `<button class="btn btn-success btn-sm" onclick="auditAction(${data.audit_id}, 'approve')" title="AprobaciÃ³n final (Jefatura)">Aprobar (final)</button>` : ""}
                 ${showFinalActions ? `<button class="btn btn-danger btn-sm" onclick="auditAction(${data.audit_id}, 'reject')" title="Rechazar siniestro escalado (Jefatura)">Rechazar</button>` : ""}
                 ${showFinalActions ? `<button class="btn btn-info btn-sm" onclick="auditAction(${data.audit_id}, 'send-to-legal')" title="Derivar a Legal (urgente)" style="background-color:#475569;color:white;">Enviar a Legal</button>` : ""}
             </div>
@@ -79,7 +84,7 @@ export async function loadAuditDetail(auditId) {
                 <div class="card-header"><h2>Items de la Factura</h2></div>
                 <div class="card-body table-wrap">
                     <table>
-                        <thead><tr><th>Codigo</th><th>Descripcion</th><th>Categoria</th><th>Cant.</th><th>P. Unitario</th><th>P. Tarifario</th><th>Total</th></tr></thead>
+                        <thead><tr><th>Codigo</th><th>Descripcion</th><th>Categoria</th><th>Cant.</th><th>P. Unitario</th>${isInitialStage ? "" : "<th>P. Tarifario</th>"}<th>Total</th></tr></thead>
                         <tbody>
                             ${data.items.map(i => {
                                 const isOver = i.tariff_price && i.unit_price > i.tariff_price * (1 + (i.tariff_tolerance || 10) / 100);
@@ -89,15 +94,15 @@ export async function loadAuditDetail(auditId) {
                                     <td><span class="cat-tag cat-${i.category || 'general'}">${i.category || 'general'}</span></td>
                                     <td>${i.quantity}</td>
                                     <td class="${isOver ? 'price-over' : ''}">$${i.unit_price.toFixed(2)}</td>
-                                    <td class="price-tariff">${i.tariff_price ? '$' + i.tariff_price.toFixed(2) : '-'}</td>
+                                    ${isInitialStage ? "" : `<td class="price-tariff">${i.tariff_price ? '$' + i.tariff_price.toFixed(2) : '-'}</td>`}
                                     <td>$${i.total_price.toFixed(2)}</td>
                                 </tr>`;
                             }).join("")}
                         </tbody>
                         <tfoot>
-                            <tr><td colspan="6" style="text-align:right;font-weight:600">Subtotal</td><td>$${data.invoice_subtotal.toFixed(2)}</td></tr>
-                            <tr><td colspan="6" style="text-align:right;font-weight:600">IVA</td><td>$${data.invoice_iva.toFixed(2)}</td></tr>
-                            <tr><td colspan="6" style="text-align:right;font-weight:700;font-size:1rem">Total</td><td style="font-weight:700;font-size:1rem">$${data.invoice_total.toFixed(2)}</td></tr>
+                            <tr><td colspan="${itemColspan}" style="text-align:right;font-weight:600">Subtotal</td><td>$${data.invoice_subtotal.toFixed(2)}</td></tr>
+                            <tr><td colspan="${itemColspan}" style="text-align:right;font-weight:600">IVA</td><td>$${data.invoice_iva.toFixed(2)}</td></tr>
+                            <tr><td colspan="${itemColspan}" style="text-align:right;font-weight:700;font-size:1rem">Total</td><td style="font-weight:700;font-size:1rem">$${data.invoice_total.toFixed(2)}</td></tr>
                         </tfoot>
                     </table>
                 </div>
@@ -117,8 +122,7 @@ export async function loadAuditDetail(auditId) {
                     </div>
                     <div style="margin-top:20px;text-align:center">
                         <div style="margin-bottom:8px">${renderStatusBadge(data.status)}</div>
-                        <div style="font-size:0.8rem;color:var(--text-muted)">Sobrecobro detectado:</div>
-                        <div style="font-size:1.3rem;font-weight:800;color:var(--accent-rose)">$${data.total_overcharge.toFixed(2)}</div>
+                        ${isInitialStage ? `<div style="font-size:0.8rem;color:var(--text-muted)">Auditoria documental inicial</div>` : `<div style="font-size:0.8rem;color:var(--text-muted)">Sobrecobro detectado:</div><div style="font-size:1.3rem;font-weight:800;color:var(--accent-rose)">$${data.total_overcharge.toFixed(2)}</div>`}
                     </div>
                 </div>
             </div>
@@ -126,11 +130,11 @@ export async function loadAuditDetail(auditId) {
         <div class="card">
             <div class="card-header"><h2>Hallazgos del Agente (${data.findings.length})</h2></div>
             <div class="card-body">
-                ${data.findings.length === 0 ? '<div class="empty-state"><h3>Sin hallazgos — factura limpia</h3></div>' : ''}
+                ${data.findings.length === 0 ? '<div class="empty-state"><h3>Sin hallazgos â€” factura limpia</h3></div>' : ''}
                 ${data.findings.map(f => `
                     <div class="finding-card ${f.severity}">
                         <div class="finding-header">
-                            <div class="finding-title">${f.title}</div>
+                            <div class="finding-title">${findingTypeIcon(f.finding_type)} ${f.title} <span class="badge" style="background:${findingTypeColor(f.finding_type)};color:white;font-size:0.65rem;margin-left:6px;">${(f.finding_type || "").replace(/_/g, " ")}</span></div>
                             <span class="badge badge-${f.severity}">${f.severity.toUpperCase()}</span>
                         </div>
                         <div class="finding-description">${f.description}</div>
@@ -156,7 +160,7 @@ export async function auditAction(auditId, action) {
             escalate: "Escalada",
             "send-to-legal": "Derivada a Legal",
         };
-        showToast(`Auditoría ${labels[action] || action} correctamente`, "success");
+        showToast(`AuditorÃ­a ${labels[action] || action} correctamente`, "success");
         if (typeof window.navigateTo === "function") window.navigateTo("auditorias");
         else location.hash = "auditorias";
     }
@@ -167,7 +171,7 @@ export async function previewReport(auditId) {
     const container = document.getElementById("pdf-preview-container");
     const iframe = document.getElementById("pdf-iframe");
     const title = document.getElementById("pdf-preview-title");
-    if (title) title.textContent = "Vista Previa — Reporte Interno";
+    if (title) title.textContent = "Vista Previa â€” Reporte Interno";
     const token = encodeURIComponent(state.currentProfileToken || "");
     iframe.src = `${API}/audit-results/${auditId}/report-preview?profile_token=${token}&t=${Date.now()}`;
     container.style.display = "block";
@@ -186,4 +190,45 @@ export async function reAuditWith(invoiceId, engine) {
         // force reload since hash may not change if same audit_id
         loadAuditDetail(result.audit_id);
     }
+}
+
+function auditStageInfo(stage) {
+    const map = {
+        initial: { label: "Inicial", color: "#0ea5e9" },
+        post_payment: { label: "Post-Pago", color: "#7c3aed" },
+        legacy: { label: "Legacy", color: "#64748b" },
+    };
+    return map[stage] || map.legacy;
+}
+
+function findingTypeIcon(type) {
+    const map = {
+        missing_police_report: "!",
+        declaration_inconsistency: "!",
+        invoice_declaration_mismatch: "!",
+        police_declaration_mismatch: "!",
+        overcharge: "$",
+        duplicate: "#",
+        quantity_anomaly: "x",
+        incoherence: "?",
+        missing_document: "!",
+        clean: "OK",
+    };
+    return map[type] || "i";
+}
+
+function findingTypeColor(type) {
+    const map = {
+        missing_police_report: "#dc2626",
+        declaration_inconsistency: "#f59e0b",
+        invoice_declaration_mismatch: "#7c3aed",
+        police_declaration_mismatch: "#0ea5e9",
+        overcharge: "#dc2626",
+        duplicate: "#f59e0b",
+        quantity_anomaly: "#f59e0b",
+        incoherence: "#7c3aed",
+        missing_document: "#dc2626",
+        clean: "#10b981",
+    };
+    return map[type] || "#64748b";
 }

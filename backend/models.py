@@ -52,6 +52,29 @@ class AuditStatus(str, enum.Enum):
     SENT_TO_LEGAL = "sent_to_legal"
 
 
+class AuditStage(str, enum.Enum):
+    """Etapa del nuevo flujo operativo de 6 pasos.
+
+    INITIAL  → ejecutada tras el registro del siniestro (declaración + historial).
+    POST_PAYMENT → ejecutada tras recibir el parte policial y las facturas;
+                   cruza declaración ↔ parte ↔ factura.
+    LEGACY   → auditoría previa al rediseño del flujo (compatibilidad).
+    """
+    LEGACY = "legacy"
+    INITIAL = "initial"
+    POST_PAYMENT = "post_payment"
+
+
+class ClaimStage(str, enum.Enum):
+    """Etapa del expediente del siniestro en el flujo de 6 pasos."""
+    REGISTERED = "registered"            # 1. Registro de Siniestro
+    INITIAL_AUDIT = "initial_audit"      # 2. Auditoría Inicial de Fraude
+    POLICE_REPORT = "police_report"      # 3. Reporte Policial recibido
+    INVOICES = "invoices"                # 4. Facturas recibidas
+    POST_PAYMENT_AUDIT = "post_payment_audit"  # 5. Auditoría Posterior al Pago
+    FINAL_DECISION = "final_decision"    # 6. Decisión Final
+
+
 class FindingSeverity(str, enum.Enum):
     INFO = "info"
     WARNING = "warning"
@@ -65,6 +88,11 @@ class FindingType(str, enum.Enum):
     INCOHERENCE = "incoherence"
     MISSING_DOCUMENT = "missing_document"
     CLEAN = "clean"
+    # Nuevos — flujo de 6 etapas (declaración + parte policial + factura)
+    MISSING_POLICE_REPORT = "missing_police_report"
+    DECLARATION_INCONSISTENCY = "declaration_inconsistency"
+    INVOICE_DECLARATION_MISMATCH = "invoice_declaration_mismatch"
+    POLICE_DECLARATION_MISMATCH = "police_declaration_mismatch"
 
 
 # ── Perfil de usuario ───────────────────────────────────
@@ -252,6 +280,8 @@ class Siniestro(Base):
     documentos = relationship("Documento", back_populates="siniestro", cascade="all, delete-orphan")
     invoices = relationship("Invoice", back_populates="siniestro")
     audit_results = relationship("AuditResult", back_populates="siniestro")
+    declaration = relationship("AccidentDeclaration", back_populates="siniestro", uselist=False, cascade="all, delete-orphan")
+    police_report = relationship("PoliceReport", back_populates="siniestro", uselist=False, cascade="all, delete-orphan")
 
 
 class Invoice(Base):
@@ -327,8 +357,10 @@ class AuditResult(Base):
     id = Column(Integer, primary_key=True, index=True)
     profile_id = Column(String(36), ForeignKey("profiles.id"), nullable=True, index=True)
     siniestro_id = Column(Integer, ForeignKey("siniestros.id_siniestro"), nullable=False)
-    invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=False)
+    # Nullable: la AUDITORÍA INICIAL (etapa 2) ocurre antes de existir factura.
+    invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=True)
     status = Column(SQLEnum(AuditStatus), default=AuditStatus.PENDING)
+    audit_stage = Column(SQLEnum(AuditStage), default=AuditStage.LEGACY, index=True)
     risk_score = Column(Float, default=0.0)
     total_overcharge = Column(Float, default=0.0)
     summary = Column(Text)
@@ -362,3 +394,175 @@ class AuditFinding(Base):
     recommendation = Column(Text)
 
     audit_result = relationship("AuditResult", back_populates="findings")
+
+
+# ── Declaración de Accidente (FR.RE.100 v01) ────────────
+# Documento que envía el cliente al reportar el siniestro.
+# Fuente: synthetic_data/DECLARACIÓN DE ACCIDENTE/
+
+class AccidentDeclaration(Base):
+    """Formulario de Reclamación para Accidentes de Vehículo (FR.RE.100 v01).
+
+    Es la evidencia principal inicial del caso. Relación 1:1 con Siniestro.
+    Los datos extraídos se preservan también en `raw_extract` (JSON) por trazabilidad.
+    """
+    __tablename__ = "accident_declarations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    siniestro_id = Column(Integer, ForeignKey("siniestros.id_siniestro"), nullable=False, unique=True, index=True)
+    profile_id = Column(String(36), ForeignKey("profiles.id"), nullable=True, index=True)
+
+    # Trazabilidad del documento
+    doc_id = Column(String(50), index=True)              # DOC-0952
+    siniestro_ref = Column(String(20), index=True)       # SIN-0378 (tal como aparece en el PDF)
+    modo = Column(String(50))                            # Manuscrito / Digital
+    fecha_firma = Column(DateTime)
+
+    # Asegurado
+    asegurado_nombre = Column(String(200))
+    asegurado_email = Column(String(150))
+    asegurado_direccion = Column(String(300))
+    asegurado_telefono = Column(String(30))
+    poliza_numero = Column(String(50))
+    item = Column(String(20))
+    agente = Column(String(100))
+
+    # Vehículo asegurado
+    veh_marca = Column(String(50))
+    veh_modelo = Column(String(50))
+    veh_tipo = Column(String(50))
+    veh_color = Column(String(50))
+    veh_placa = Column(String(20), index=True)
+    veh_motor = Column(String(50))
+    veh_chasis = Column(String(50))
+    veh_detalle_danos = Column(Text)
+    veh_lugar_inspeccion = Column(String(300))
+
+    # Datos del accidente
+    accidente_lugar = Column(String(300))
+    accidente_velocidad = Column(String(30))
+    accidente_fecha = Column(DateTime)
+    accidente_hora = Column(String(10))
+    accidente_viniendo_de = Column(String(150))
+    accidente_direccion_a = Column(String(150))
+    accidente_descripcion = Column(Text)
+    accidente_responsable = Column(String(200))
+
+    # Conductor del vehículo asegurado
+    conductor_nombre = Column(String(200))
+    conductor_direccion = Column(String(300))
+    conductor_telefono = Column(String(30))
+    conductor_cedula = Column(String(20))
+    conductor_categoria_licencia = Column(String(20))
+    conductor_licencia_valida_hasta = Column(String(20))
+
+    # Vehículo contrario
+    contrario_marca = Column(String(50))
+    contrario_modelo = Column(String(50))
+    contrario_placa = Column(String(20))
+    contrario_color = Column(String(50))
+    contrario_aseguradora = Column(String(100))
+    contrario_propietario = Column(String(200))
+    contrario_detalle_danos = Column(Text)
+    contrario_lugar_inspeccion = Column(String(300))
+
+    testigos = Column(Text)
+
+    # Intervención de autoridades
+    autoridades_agentes = Column(String(300))
+    autoridades_juzgado = Column(String(150))
+    autoridades_detenido = Column(String(10))            # "Sí" / "No"
+    autoridades_lugar_asistencia_medica = Column(String(300))
+
+    # Datos crudos + auditoría
+    raw_extract = Column(Text)                            # JSON completo del extractor
+    source_filename = Column(String(255))
+    uploaded_at = Column(DateTime, default=datetime.utcnow)
+
+    siniestro = relationship("Siniestro", back_populates="declaration")
+
+
+# ── Parte Policial (Ministerio del Interior) ────────────
+# Documento obligatorio dentro del flujo (etapa 3).
+# Fuente: synthetic_data/PARTE POLICIAL/
+
+class PoliceReport(Base):
+    """Noticia del Incidente del Ministerio del Interior (parte policial)."""
+    __tablename__ = "police_reports"
+
+    id = Column(Integer, primary_key=True, index=True)
+    siniestro_id = Column(Integer, ForeignKey("siniestros.id_siniestro"), nullable=False, unique=True, index=True)
+    profile_id = Column(String(36), ForeignKey("profiles.id"), nullable=True, index=True)
+
+    # Trazabilidad
+    doc_id = Column(String(50), index=True)              # DOC-0012
+    siniestro_ref = Column(String(20), index=True)       # SIN-0005
+    parte_no = Column(String(40), index=True)            # PTACP20260492817
+    fecha_elaboracion = Column(DateTime)
+    servicio_policial = Column(String(100))
+
+    # Unidad
+    zona = Column(String(80))
+    sub_zona = Column(String(80))
+    distrito = Column(String(80))
+    circuito = Column(String(80))
+    sub_circuito = Column(String(80))
+    unidad = Column(String(120))
+
+    # Geográfica
+    calle_1 = Column(String(300))
+    calle_2 = Column(String(300))
+    fecha_hecho = Column(DateTime)
+    hora_aproximada = Column(String(10))
+    tipo_via = Column(String(80))
+    composicion = Column(String(80))
+    estado_via = Column(String(80))
+    carriles = Column(String(10))
+    semaforos = Column(String(10))
+    alumbrado = Column(String(10))
+    latitud = Column(String(30))
+    longitud = Column(String(30))
+
+    # Clasificación
+    clasificacion_tipo = Column(String(40))              # Administrativo / Penal
+    flagrancia = Column(String(10))                       # SI / NO
+    operativo = Column(String(50))                        # ORDINARIO / ESPECIAL
+
+    # Tipo de accidente (checkboxes): se serializa como CSV en `tipos_accidente`
+    tipos_accidente = Column(String(400))                 # "robo,choque_alcance" etc.
+
+    consecuencias = Column(String(200))
+    clima = Column(String(50))
+    dia_festivo = Column(String(10))
+
+    circunstancias = Column(Text)
+    parte_elevado_a = Column(String(200))
+
+    # Participante 1 (conductor principal). Adicionales en raw_extract.
+    p1_nombre = Column(String(200))
+    p1_cedula = Column(String(20))
+    p1_edad = Column(Integer)
+    p1_sexo = Column(String(20))
+    p1_estado = Column(String(40))                       # ILESO / HERIDO / FALLECIDO
+    p1_tipo_licencia = Column(String(10))
+    p1_detenido = Column(String(10))
+    p1_observaciones = Column(Text)
+
+    # Vehículo principal (primero del parte). Adicionales en raw_extract.
+    veh_placa = Column(String(20), index=True)
+    veh_marca = Column(String(50))
+    veh_modelo = Column(String(50))
+    veh_tipo = Column(String(50))
+    veh_anio = Column(Integer)
+    veh_color = Column(String(50))
+    veh_motor = Column(String(50))
+    veh_chasis = Column(String(50))
+    veh_estado = Column(String(100))
+
+    personal_policial = Column(Text)                      # JSON list
+
+    raw_extract = Column(Text)                            # JSON completo
+    source_filename = Column(String(255))
+    uploaded_at = Column(DateTime, default=datetime.utcnow)
+
+    siniestro = relationship("Siniestro", back_populates="police_report")

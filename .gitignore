@@ -8,7 +8,7 @@ __pycache__/
 dist/
 build/
 .eggs/
-
+synthetic_data/
 # Entornos virtuales
 venv/
 env/

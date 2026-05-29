@@ -14,6 +14,7 @@ import sys
 import os
 import csv
 import io
+import re
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import json
@@ -32,9 +33,10 @@ from backend.auth import (
 from backend.profile_scope import ProfileScope
 from backend.models import (
     Profile, Siniestro, Invoice, InvoiceItem, TariffItem,
-    AuditResult, AuditFinding, Workshop, AuditStatus,
+    AuditResult, AuditFinding, Workshop, AuditStatus, AuditStage,
     FindingSeverity, FindingType, Ramo, Cobertura, EstadoSiniestro,
     Poliza, AseguradoSintetico, Vehiculo, Documento, AuditLog,
+    AccidentDeclaration, PoliceReport,
 )
 
 app = FastAPI(title="Auditor Agentico de Siniestros", version="2.0.0")
@@ -767,6 +769,7 @@ def get_audit_results(
             "total_overcharge": r.total_overcharge,
             "invoice_total": invoice.total if invoice else 0,
             "summary": r.summary,
+            "audit_stage": r.audit_stage.value if r.audit_stage else "legacy",
             "audit_engine": getattr(r, "audit_engine", "rules") or "rules",
             "is_test": bool(getattr(r, "is_test", 0) or 0),
             "audited_at": r.audited_at.isoformat() if r.audited_at else None,
@@ -817,6 +820,7 @@ def get_audit_result(
         "invoice_iva": invoice.iva if invoice else 0,
         "invoice_total": invoice.total if invoice else 0,
         "summary": r.summary,
+        "audit_stage": r.audit_stage.value if r.audit_stage else "legacy",
         "audited_at": r.audited_at.isoformat() if r.audited_at else None,
         "items": [{
             "id": i.id, "code": i.code, "description": i.description, "category": i.category,
@@ -1642,6 +1646,617 @@ def get_claim_invoices(
     return output
 
 
+# ── Declaración de Accidente (Etapa 1 del flujo de 6 pasos) ────────────
+# Documento principal del expediente. Lo carga "operaciones" tras el registro
+# inicial del siniestro. La extracción se persiste en `accident_declarations`
+# (1:1 con el siniestro) y dispara aguas abajo la Auditoría Inicial de Fraude.
+
+
+def _declaration_to_dict(d: AccidentDeclaration) -> dict:
+    if not d:
+        return None
+    return {
+        "id": d.id,
+        "siniestro_id": d.siniestro_id,
+        "doc_id": d.doc_id,
+        "siniestro_ref": d.siniestro_ref,
+        "modo": d.modo,
+        "fecha_firma": d.fecha_firma.isoformat() if d.fecha_firma else None,
+        "asegurado": {
+            "nombre": d.asegurado_nombre,
+            "email": d.asegurado_email,
+            "direccion": d.asegurado_direccion,
+            "telefono": d.asegurado_telefono,
+            "poliza": d.poliza_numero,
+            "item": d.item,
+            "agente": d.agente,
+        },
+        "vehiculo": {
+            "marca": d.veh_marca, "modelo": d.veh_modelo, "tipo": d.veh_tipo,
+            "color": d.veh_color, "placa": d.veh_placa,
+            "motor": d.veh_motor, "chasis": d.veh_chasis,
+            "detalle_danos": d.veh_detalle_danos,
+            "lugar_inspeccion": d.veh_lugar_inspeccion,
+        },
+        "accidente": {
+            "lugar": d.accidente_lugar,
+            "velocidad": d.accidente_velocidad,
+            "fecha": d.accidente_fecha.isoformat() if d.accidente_fecha else None,
+            "hora": d.accidente_hora,
+            "viniendo_de": d.accidente_viniendo_de,
+            "direccion_a": d.accidente_direccion_a,
+            "descripcion": d.accidente_descripcion,
+            "responsable": d.accidente_responsable,
+        },
+        "conductor": {
+            "nombre": d.conductor_nombre, "direccion": d.conductor_direccion,
+            "telefono": d.conductor_telefono, "cedula": d.conductor_cedula,
+            "categoria_licencia": d.conductor_categoria_licencia,
+            "licencia_valida_hasta": d.conductor_licencia_valida_hasta,
+        },
+        "contrario": {
+            "marca": d.contrario_marca, "modelo": d.contrario_modelo,
+            "placa": d.contrario_placa, "color": d.contrario_color,
+            "aseguradora": d.contrario_aseguradora,
+            "propietario": d.contrario_propietario,
+            "detalle_danos": d.contrario_detalle_danos,
+            "lugar_inspeccion": d.contrario_lugar_inspeccion,
+        },
+        "testigos": d.testigos,
+        "autoridades": {
+            "agentes": d.autoridades_agentes,
+            "juzgado": d.autoridades_juzgado,
+            "detenido": d.autoridades_detenido,
+            "lugar_asistencia_medica": d.autoridades_lugar_asistencia_medica,
+        },
+        "source_filename": d.source_filename,
+        "uploaded_at": d.uploaded_at.isoformat() if d.uploaded_at else None,
+    }
+
+
+@app.post("/api/claims/{claim_id}/declaration", status_code=201)
+async def upload_claim_declaration(
+    claim_id: int,
+    file: UploadFile = File(...),
+    scope: ProfileScope = Depends(get_scope),
+    db: Session = Depends(get_db),
+):
+    """Sube el PDF de Declaración de Accidente (FR.RE.100) para un siniestro.
+
+    Etapa 1 del flujo de 6 pasos. Sólo `operaciones` puede subirla.
+    Si ya existe una declaración previa, se REEMPLAZA (1:1).
+    Devuelve el dict extraído + alerta si la referencia del PDF (SIN-XXXX)
+    no coincide con el id del siniestro.
+    """
+    from backend.declaration_extractor import extract_declaration_from_pdf
+    scope.require_role("operaciones")
+    scope.require_write("siniestros")
+
+    siniestro = scope.get_siniestro(claim_id)
+    if not siniestro:
+        raise HTTPException(status_code=404, detail="Siniestro no encontrado.")
+
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Solo se aceptan archivos PDF.")
+    pdf_bytes = await file.read()
+    if len(pdf_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="PDF demasiado grande (máx 10MB).")
+
+    try:
+        data = extract_declaration_from_pdf(pdf_bytes)
+    except ImportError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"No se pudo parsear la declaración: {str(e)}")
+
+    # Coherencia: la ref del PDF debería corresponder al siniestro.
+    # No bloqueamos, pero lo registramos como warning en la respuesta.
+    warnings: list[str] = []
+    pdf_ref = (data.get("siniestro_ref") or "").upper()
+    if pdf_ref:
+        # Acepta SIN-{id} o SIN-0001 estilo padding.
+        try:
+            ref_id = int(re.sub(r"[^\d]", "", pdf_ref))
+            if ref_id and ref_id != siniestro.id_siniestro:
+                warnings.append(
+                    f"El PDF referencia {pdf_ref} pero se está cargando al siniestro "
+                    f"id={siniestro.id_siniestro}. Verifique."
+                )
+        except ValueError:
+            pass
+
+    # Borrar declaración previa si existe (replace 1:1)
+    existing = db.query(AccidentDeclaration).filter(
+        AccidentDeclaration.siniestro_id == claim_id
+    ).first()
+    if existing:
+        db.delete(existing)
+        db.flush()
+
+    def _parse_iso(s):
+        if not s:
+            return None
+        try:
+            return datetime.fromisoformat(s)
+        except ValueError:
+            return None
+
+    decl = AccidentDeclaration(
+        siniestro_id=claim_id,
+        profile_id=scope.profile_id,
+        doc_id=data.get("doc_id") or None,
+        siniestro_ref=pdf_ref or None,
+        modo=data.get("modo") or None,
+        fecha_firma=_parse_iso(data.get("fecha_firma")),
+
+        asegurado_nombre=data.get("asegurado_nombre") or None,
+        asegurado_email=data.get("asegurado_email") or None,
+        asegurado_direccion=data.get("asegurado_direccion") or None,
+        asegurado_telefono=data.get("asegurado_telefono") or None,
+        poliza_numero=data.get("poliza_numero") or None,
+        item=data.get("item") or None,
+        agente=data.get("agente") or None,
+
+        veh_marca=data.get("veh_marca") or None,
+        veh_modelo=data.get("veh_modelo") or None,
+        veh_tipo=data.get("veh_tipo") or None,
+        veh_color=data.get("veh_color") or None,
+        veh_placa=(data.get("veh_placa") or "").upper() or None,
+        veh_motor=data.get("veh_motor") or None,
+        veh_chasis=data.get("veh_chasis") or None,
+        veh_detalle_danos=data.get("veh_detalle_danos") or None,
+        veh_lugar_inspeccion=data.get("veh_lugar_inspeccion") or None,
+
+        accidente_lugar=data.get("accidente_lugar") or None,
+        accidente_velocidad=data.get("accidente_velocidad") or None,
+        accidente_fecha=_parse_iso(data.get("accidente_fecha")),
+        accidente_hora=data.get("accidente_hora") or None,
+        accidente_viniendo_de=data.get("accidente_viniendo_de") or None,
+        accidente_direccion_a=data.get("accidente_direccion_a") or None,
+        accidente_descripcion=data.get("accidente_descripcion") or None,
+        accidente_responsable=data.get("accidente_responsable") or None,
+
+        conductor_nombre=data.get("conductor_nombre") or None,
+        conductor_direccion=data.get("conductor_direccion") or None,
+        conductor_telefono=data.get("conductor_telefono") or None,
+        conductor_cedula=data.get("conductor_cedula") or None,
+        conductor_categoria_licencia=data.get("conductor_categoria_licencia") or None,
+        conductor_licencia_valida_hasta=data.get("conductor_licencia_valida_hasta") or None,
+
+        contrario_marca=data.get("contrario_marca") or None,
+        contrario_modelo=data.get("contrario_modelo") or None,
+        contrario_placa=(data.get("contrario_placa") or "").upper() or None,
+        contrario_color=data.get("contrario_color") or None,
+        contrario_aseguradora=data.get("contrario_aseguradora") or None,
+        contrario_propietario=data.get("contrario_propietario") or None,
+        contrario_detalle_danos=data.get("contrario_detalle_danos") or None,
+        contrario_lugar_inspeccion=data.get("contrario_lugar_inspeccion") or None,
+
+        testigos=data.get("testigos") or None,
+        autoridades_agentes=data.get("autoridades_agentes") or None,
+        autoridades_juzgado=data.get("autoridades_juzgado") or None,
+        autoridades_detenido=data.get("autoridades_detenido") or None,
+        autoridades_lugar_asistencia_medica=data.get("autoridades_lugar_asistencia_medica") or None,
+
+        raw_extract=json.dumps(data, default=str),
+        source_filename=file.filename,
+    )
+    db.add(decl)
+    db.commit()
+    db.refresh(decl)
+
+    # Disparo etapa 2 — Auditoría Inicial de Fraude
+    initial_audit_result = None
+    try:
+        agent = AuditAgent(db, profile_id=scope.profile_id)
+        initial_audit_result = agent.audit_initial(claim_id)
+    except Exception as e:
+        warnings.append(f"Auditoría inicial no se ejecutó automáticamente: {str(e)[:120]}")
+
+    return {
+        "status": "ok",
+        "declaration": _declaration_to_dict(decl),
+        "warnings": warnings,
+        "extracted": data,
+        "initial_audit": initial_audit_result,
+    }
+
+
+@app.get("/api/claims/{claim_id}/declaration")
+def get_claim_declaration(
+    claim_id: int,
+    scope: ProfileScope = Depends(get_scope),
+    db: Session = Depends(get_db),
+):
+    """Lectura de la declaración de un siniestro. Todos los roles pueden leer."""
+    siniestro = scope.get_siniestro(claim_id)
+    if not siniestro:
+        raise HTTPException(status_code=404, detail="Siniestro no encontrado.")
+    decl = db.query(AccidentDeclaration).filter(
+        AccidentDeclaration.siniestro_id == claim_id
+    ).first()
+    if not decl:
+        return {"status": "missing", "declaration": None}
+    return {"status": "present", "declaration": _declaration_to_dict(decl)}
+
+
+# ── Parte Policial (Etapa 3 del flujo de 6 pasos) ────────────────
+# Documento obligatorio dentro del expediente. Lo carga "operaciones" después
+# de la Declaración (etapa 1) y antes de las facturas (etapa 4).
+
+
+def _police_report_to_dict(pr: PoliceReport) -> dict:
+    if not pr:
+        return None
+    personal = []
+    if pr.personal_policial:
+        try:
+            personal = json.loads(pr.personal_policial)
+        except (ValueError, TypeError):
+            personal = []
+    return {
+        "id": pr.id,
+        "siniestro_id": pr.siniestro_id,
+        "doc_id": pr.doc_id,
+        "siniestro_ref": pr.siniestro_ref,
+        "parte_no": pr.parte_no,
+        "fecha_elaboracion": pr.fecha_elaboracion.isoformat() if pr.fecha_elaboracion else None,
+        "servicio_policial": pr.servicio_policial,
+        "unidad": {
+            "zona": pr.zona, "sub_zona": pr.sub_zona, "distrito": pr.distrito,
+            "circuito": pr.circuito, "sub_circuito": pr.sub_circuito, "unidad": pr.unidad,
+        },
+        "geografica": {
+            "calle_1": pr.calle_1, "calle_2": pr.calle_2,
+            "fecha_hecho": pr.fecha_hecho.isoformat() if pr.fecha_hecho else None,
+            "hora_aproximada": pr.hora_aproximada,
+            "tipo_via": pr.tipo_via, "composicion": pr.composicion,
+            "estado_via": pr.estado_via, "carriles": pr.carriles,
+            "semaforos": pr.semaforos, "alumbrado": pr.alumbrado,
+            "latitud": pr.latitud, "longitud": pr.longitud,
+        },
+        "clasificacion": {
+            "tipo": pr.clasificacion_tipo,
+            "flagrancia": pr.flagrancia,
+            "operativo": pr.operativo,
+        },
+        "tipos_accidente": (pr.tipos_accidente or "").split(",") if pr.tipos_accidente else [],
+        "consecuencias": pr.consecuencias,
+        "clima": pr.clima,
+        "dia_festivo": pr.dia_festivo,
+        "circunstancias": pr.circunstancias,
+        "parte_elevado_a": pr.parte_elevado_a,
+        "participante_1": {
+            "nombre": pr.p1_nombre, "cedula": pr.p1_cedula, "edad": pr.p1_edad,
+            "sexo": pr.p1_sexo, "estado": pr.p1_estado,
+            "tipo_licencia": pr.p1_tipo_licencia, "detenido": pr.p1_detenido,
+            "observaciones": pr.p1_observaciones,
+        },
+        "vehiculo": {
+            "placa": pr.veh_placa, "marca": pr.veh_marca, "modelo": pr.veh_modelo,
+            "tipo": pr.veh_tipo, "anio": pr.veh_anio, "color": pr.veh_color,
+            "motor": pr.veh_motor, "chasis": pr.veh_chasis, "estado": pr.veh_estado,
+        },
+        "personal_policial": personal,
+        "source_filename": pr.source_filename,
+        "uploaded_at": pr.uploaded_at.isoformat() if pr.uploaded_at else None,
+    }
+
+
+@app.post("/api/claims/{claim_id}/police-report", status_code=201)
+async def upload_claim_police_report(
+    claim_id: int,
+    file: UploadFile = File(...),
+    scope: ProfileScope = Depends(get_scope),
+    db: Session = Depends(get_db),
+):
+    """Sube el PDF del Parte Policial (Ministerio del Interior) — etapa 3.
+
+    Bloqueo HARD: requiere que la Declaración (etapa 1) ya esté cargada.
+    Sólo `operaciones` puede subir. Si ya existe parte previo, REEMPLAZA (1:1).
+    """
+    from backend.police_report_extractor import extract_police_report_from_pdf
+    scope.require_role("operaciones")
+    scope.require_write("siniestros")
+
+    siniestro = scope.get_siniestro(claim_id)
+    if not siniestro:
+        raise HTTPException(status_code=404, detail="Siniestro no encontrado.")
+
+    # ETAPA OBLIGATORIA PREVIA: declaración
+    decl = db.query(AccidentDeclaration).filter(
+        AccidentDeclaration.siniestro_id == claim_id
+    ).first()
+    if not decl:
+        raise HTTPException(
+            status_code=409,
+            detail="Etapa fuera de orden: cargue primero la Declaración de Accidente.",
+        )
+
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Solo se aceptan archivos PDF.")
+    pdf_bytes = await file.read()
+    if len(pdf_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="PDF demasiado grande (máx 10MB).")
+
+    try:
+        data = extract_police_report_from_pdf(pdf_bytes)
+    except ImportError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"No se pudo parsear el parte policial: {str(e)}")
+
+    warnings: list[str] = []
+    pdf_ref = (data.get("siniestro_ref") or "").upper()
+    if pdf_ref:
+        try:
+            ref_id = int(re.sub(r"[^\d]", "", pdf_ref))
+            if ref_id and ref_id != siniestro.id_siniestro:
+                warnings.append(
+                    f"El parte referencia {pdf_ref} pero se está cargando al siniestro "
+                    f"id={siniestro.id_siniestro}. Verifique."
+                )
+        except ValueError:
+            pass
+
+    # Coherencia inmediata: placa parte vs declaración
+    pdf_placa = (data.get("veh_placa") or "").upper().replace(" ", "")
+    decl_placa = (decl.veh_placa or "").upper().replace(" ", "")
+    if pdf_placa and decl_placa and pdf_placa != decl_placa:
+        warnings.append(
+            f"Placa del vehículo en el parte ({pdf_placa}) difiere de la declaración ({decl_placa})."
+        )
+
+    existing = db.query(PoliceReport).filter(
+        PoliceReport.siniestro_id == claim_id
+    ).first()
+    if existing:
+        db.delete(existing)
+        db.flush()
+
+    def _parse_iso(s):
+        if not s:
+            return None
+        try:
+            return datetime.fromisoformat(s)
+        except ValueError:
+            return None
+
+    pr = PoliceReport(
+        siniestro_id=claim_id,
+        profile_id=scope.profile_id,
+        doc_id=data.get("doc_id") or None,
+        siniestro_ref=pdf_ref or None,
+        parte_no=data.get("parte_no") or None,
+        fecha_elaboracion=_parse_iso(data.get("fecha_elaboracion")),
+        servicio_policial=data.get("servicio_policial") or None,
+
+        zona=data.get("zona") or None,
+        sub_zona=data.get("sub_zona") or None,
+        distrito=data.get("distrito") or None,
+        circuito=data.get("circuito") or None,
+        sub_circuito=data.get("sub_circuito") or None,
+        unidad=data.get("unidad") or None,
+
+        calle_1=data.get("calle_1") or None,
+        calle_2=data.get("calle_2") or None,
+        fecha_hecho=_parse_iso(data.get("fecha_hecho")),
+        hora_aproximada=data.get("hora_aproximada") or None,
+        tipo_via=data.get("tipo_via") or None,
+        composicion=data.get("composicion") or None,
+        estado_via=data.get("estado_via") or None,
+        carriles=data.get("carriles") or None,
+        semaforos=data.get("semaforos") or None,
+        alumbrado=data.get("alumbrado") or None,
+        latitud=data.get("latitud") or None,
+        longitud=data.get("longitud") or None,
+
+        clasificacion_tipo=data.get("clasificacion_tipo") or None,
+        flagrancia=data.get("flagrancia") or None,
+        operativo=data.get("operativo") or None,
+
+        tipos_accidente=",".join(data.get("tipos_accidente") or []) or None,
+
+        consecuencias=data.get("consecuencias") or None,
+        clima=data.get("clima") or None,
+        dia_festivo=data.get("dia_festivo") or None,
+        circunstancias=data.get("circunstancias") or None,
+        parte_elevado_a=data.get("parte_elevado_a") or None,
+
+        p1_nombre=data.get("p1_nombre") or None,
+        p1_cedula=data.get("p1_cedula") or None,
+        p1_edad=data.get("p1_edad"),
+        p1_sexo=data.get("p1_sexo") or None,
+        p1_estado=data.get("p1_estado") or None,
+        p1_tipo_licencia=data.get("p1_tipo_licencia") or None,
+        p1_detenido=data.get("p1_detenido") or None,
+        p1_observaciones=data.get("p1_observaciones") or None,
+
+        veh_placa=pdf_placa or None,
+        veh_marca=data.get("veh_marca") or None,
+        veh_modelo=data.get("veh_modelo") or None,
+        veh_tipo=data.get("veh_tipo") or None,
+        veh_anio=data.get("veh_anio"),
+        veh_color=data.get("veh_color") or None,
+        veh_motor=data.get("veh_motor") or None,
+        veh_chasis=data.get("veh_chasis") or None,
+        veh_estado=data.get("veh_estado") or None,
+
+        personal_policial=json.dumps(data.get("personal_policial") or []),
+        raw_extract=json.dumps(data, default=str),
+        source_filename=file.filename,
+    )
+    db.add(pr)
+    db.commit()
+    db.refresh(pr)
+
+    # Si ya hay facturas para este siniestro, disparar etapa 5 (Post-Pago).
+    # Si no hay facturas todavía, el post-payment se disparará al cargarlas.
+    post_audit_result = None
+    has_invoice = scope.invoices().filter(Invoice.siniestro_id == claim_id).first() is not None
+    if has_invoice:
+        try:
+            agent = AuditAgent(db, profile_id=scope.profile_id)
+            post_audit_result = agent.audit_post_payment(claim_id)
+        except Exception as e:
+            warnings.append(f"Auditoría post-pago no se ejecutó automáticamente: {str(e)[:120]}")
+
+    return {
+        "status": "ok",
+        "police_report": _police_report_to_dict(pr),
+        "warnings": warnings,
+        "extracted": data,
+        "post_payment_audit": post_audit_result,
+    }
+
+
+@app.get("/api/claims/{claim_id}/police-report")
+def get_claim_police_report(
+    claim_id: int,
+    scope: ProfileScope = Depends(get_scope),
+    db: Session = Depends(get_db),
+):
+    """Lectura del parte policial. Disponible para todos los roles."""
+    siniestro = scope.get_siniestro(claim_id)
+    if not siniestro:
+        raise HTTPException(status_code=404, detail="Siniestro no encontrado.")
+    pr = db.query(PoliceReport).filter(PoliceReport.siniestro_id == claim_id).first()
+    if not pr:
+        return {"status": "missing", "police_report": None}
+    return {"status": "present", "police_report": _police_report_to_dict(pr)}
+
+
+# ── Política de Parte Policial (umbral de gravedad) ────────────
+
+
+@app.get("/api/claims/{claim_id}/police-requirement")
+def get_police_requirement(
+    claim_id: int,
+    scope: ProfileScope = Depends(get_scope),
+    db: Session = Depends(get_db),
+):
+    """Indica si este siniestro requiere parte policial según la política
+    de gravedad. Consumido por el frontend wizard para decidir si mostrar
+    la etapa 3 o permitir saltarla.
+    """
+    from backend.police_report_policy import requires_police_report
+
+    siniestro = scope.get_siniestro(claim_id)
+    if not siniestro:
+        raise HTTPException(status_code=404, detail="Siniestro no encontrado.")
+    decl = db.query(AccidentDeclaration).filter(
+        AccidentDeclaration.siniestro_id == claim_id
+    ).first()
+    pr = db.query(PoliceReport).filter(PoliceReport.siniestro_id == claim_id).first()
+
+    required, reasons = requires_police_report(siniestro, decl)
+    return {
+        "siniestro_id": siniestro.id_siniestro,
+        "required": required,
+        "can_skip": not required,
+        "reasons": reasons,
+        "report_loaded": pr is not None,
+    }
+
+
+# ── Timeline del Expediente (6 etapas del nuevo flujo) ────────────
+
+
+@app.get("/api/claims/{claim_id}/timeline")
+def get_claim_timeline(
+    claim_id: int,
+    scope: ProfileScope = Depends(get_scope),
+    db: Session = Depends(get_db),
+):
+    """Devuelve estado de las 6 etapas del flujo para un siniestro.
+
+    Consumido por el wizard del frontend para mostrar progreso y bloqueos.
+    """
+    siniestro = scope.get_siniestro(claim_id)
+    if not siniestro:
+        raise HTTPException(status_code=404, detail="Siniestro no encontrado.")
+
+    decl = db.query(AccidentDeclaration).filter(
+        AccidentDeclaration.siniestro_id == claim_id
+    ).first()
+    pr = db.query(PoliceReport).filter(PoliceReport.siniestro_id == claim_id).first()
+    invoices = scope.invoices().filter(Invoice.siniestro_id == claim_id).all()
+    audits = scope.audit_results().filter(AuditResult.siniestro_id == claim_id).all()
+
+    initial_audit = next((a for a in audits if a.audit_stage == AuditStage.INITIAL), None)
+    post_audit = next((a for a in audits if a.audit_stage == AuditStage.POST_PAYMENT), None)
+    # La decisión final SÓLO es relevante sobre la post-payment (etapa 5)
+    # tras revisión humana de Jefatura/Legal. Las auto-aprobaciones por
+    # bajo risk_score del rules engine no cuentan como "decisión final".
+    final_audit = post_audit if (post_audit and post_audit.reviewed_at) else None
+
+    # Política de parte policial según gravedad
+    from backend.police_report_policy import requires_police_report
+    pr_required, pr_reasons = requires_police_report(siniestro, decl)
+
+    def _stage(done: bool, blocked_by: str = None, **extra):
+        return {"done": done, "blocked_by": blocked_by, **extra}
+
+    timeline = {
+        "siniestro_id": siniestro.id_siniestro,
+        "claim_number": f"SIN-{siniestro.id_siniestro}",
+        "stages": {
+            "1_registered": _stage(
+                done=True,
+                created_at=siniestro.fecha_reporte.isoformat() if siniestro.fecha_reporte else None,
+            ),
+            "2_initial_audit": _stage(
+                done=initial_audit is not None,
+                blocked_by=None if decl else "declaration",
+                audit_id=initial_audit.id if initial_audit else None,
+                risk_score=initial_audit.risk_score if initial_audit else None,
+                status=initial_audit.status.value if initial_audit else None,
+                declaration_loaded=decl is not None,
+                declaration_uploaded_at=decl.uploaded_at.isoformat() if decl and decl.uploaded_at else None,
+            ),
+            "3_police_report": {
+                "done": pr is not None,
+                "skipped": (not pr_required) and pr is None,
+                "required": pr_required,
+                "reasons": pr_reasons,
+                "blocked_by": None if (decl or not pr_required) else "declaration",
+                "doc_id": pr.doc_id if pr else None,
+                "parte_no": pr.parte_no if pr else None,
+                "uploaded_at": pr.uploaded_at.isoformat() if pr and pr.uploaded_at else None,
+            },
+            "4_invoices": _stage(
+                done=len(invoices) > 0,
+                # Bloqueada por parte sólo si era requerido. Si no, puede saltar.
+                blocked_by=("police_report" if (pr_required and not pr) else None),
+                count=len(invoices),
+                total_billed=sum(i.total or 0 for i in invoices),
+            ),
+            "5_post_payment_audit": _stage(
+                done=post_audit is not None,
+                # Si parte no era requerido, basta con facturas para post-pago.
+                blocked_by=(
+                    None if (invoices and (pr or not pr_required))
+                    else ("police_report" if (pr_required and not pr) else "invoice")
+                ),
+                audit_id=post_audit.id if post_audit else None,
+                risk_score=post_audit.risk_score if post_audit else None,
+                status=post_audit.status.value if post_audit else None,
+                total_overcharge=post_audit.total_overcharge if post_audit else None,
+            ),
+            "6_final_decision": _stage(
+                done=final_audit is not None and final_audit.status in (
+                    AuditStatus.APPROVED, AuditStatus.REJECTED,
+                ),
+                blocked_by=None if post_audit else "post_payment_audit",
+                status=final_audit.status.value if final_audit else None,
+                reviewed_by=final_audit.reviewed_by if final_audit else None,
+                reviewed_at=final_audit.reviewed_at.isoformat() if final_audit and final_audit.reviewed_at else None,
+            ),
+        },
+    }
+    return timeline
+
+
 # ── Acción manual sobre auditoría ──────────────────────
 
 def _is_escalated(r) -> bool:
@@ -2123,6 +2738,39 @@ async def audit_pdf_upload(
     effective_ref = (effective_ref or "").replace(" ", "").upper()
     if effective_ref:
         siniestro = scope.siniestros().filter(Siniestro.id_poliza == effective_ref).first()
+        # Si effective_ref tiene formato SIN-XXX o es numérico puro, también
+        # intentar match por id_siniestro (el cliente puede pasar "SIN-57" o "57").
+        if not siniestro:
+            m = re.search(r"(\d+)$", effective_ref)
+            if m:
+                try:
+                    sid = int(m.group(1))
+                    siniestro = scope.siniestros().filter(Siniestro.id_siniestro == sid).first()
+                except ValueError:
+                    pass
+
+    # ETAPA 4 - BLOQUEO HARD CONDICIONAL: si el siniestro existe y la política
+    # de gravedad EXIGE parte policial (ROBO/INCENDIO, monto alto, lesionados,
+    # terceros, pérdida total), rechazar si no se ha cargado. Si la política
+    # no lo exige (rayón/daño menor sin terceros), permitir saltar etapa 3.
+    if siniestro is not None:
+        from backend.police_report_policy import requires_police_report
+        decl_for_policy = db.query(AccidentDeclaration).filter(
+            AccidentDeclaration.siniestro_id == siniestro.id_siniestro
+        ).first()
+        pr_exists = db.query(PoliceReport).filter(
+            PoliceReport.siniestro_id == siniestro.id_siniestro
+        ).first()
+        pr_required, pr_reasons = requires_police_report(siniestro, decl_for_policy)
+        if pr_required and not pr_exists:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Etapa fuera de orden: el siniestro SIN-{siniestro.id_siniestro} "
+                    f"requiere Parte Policial antes de procesar facturas. "
+                    f"Motivos: {'; '.join(pr_reasons)}"
+                ),
+            )
     if not siniestro:
         placeholder_poliza = (effective_ref or f"PDF-{file.filename}")[:20]
         insured_id = (pdf_insured[:50] if pdf_insured else "ASEGURADO_PDF")
@@ -2191,17 +2839,48 @@ async def audit_pdf_upload(
         issue_date = datetime.utcnow()
 
     invoice_number = (invoice_data.get("invoice_number") or "").strip() or f"PDF-{file.filename}"
+    # Bases migradas antes de profile_id pueden conservar un índice único global
+    # invoice+taller. Para flujos demo que reusan el mismo PDF en otro siniestro,
+    # preservamos la carga agregando el id del siniestro a la copia del número.
+    global_existing = db.query(Invoice).filter(
+        Invoice.invoice_number == invoice_number,
+        Invoice.workshop_id == workshop.id,
+        Invoice.profile_id != scope.profile_id,
+    ).first()
+    if global_existing:
+        invoice_number = f"{invoice_number}-{siniestro.id_siniestro}"
 
     existing = scope.invoices().filter(
         Invoice.invoice_number == invoice_number,
         Invoice.workshop_id == workshop.id,
+        Invoice.profile_id == scope.profile_id,
     ).first()
     if existing:
+        post_audit_result = None
+        try:
+            existing_claim = scope.get_siniestro(existing.siniestro_id)
+            if existing_claim:
+                from backend.police_report_policy import requires_police_report as _req_pr_existing
+                decl_obj = db.query(AccidentDeclaration).filter(
+                    AccidentDeclaration.siniestro_id == existing_claim.id_siniestro
+                ).first()
+                has_pr = db.query(PoliceReport).filter(
+                    PoliceReport.siniestro_id == existing_claim.id_siniestro
+                ).first() is not None
+                pr_required_local, _ = _req_pr_existing(existing_claim, decl_obj)
+                if decl_obj and (has_pr or not pr_required_local):
+                    agent = AuditAgent(db, profile_id=scope.profile_id)
+                    post_audit_result = agent.audit_post_payment(
+                        existing_claim.id_siniestro, invoice_id=existing.id,
+                    )
+        except Exception as e:
+            post_audit_result = {"error": str(e)[:200]}
         db.rollback()
         return {
             "filename": file.filename, "invoice_id": existing.id,
             "invoice_extracted": invoice_data, "status": "already_exists",
             "is_test": bool(existing.is_test),
+            "post_payment_audit": post_audit_result,
             "message": f"La factura {invoice_number} de este taller ya está registrada.",
         }
 
@@ -2223,7 +2902,9 @@ async def audit_pdf_upload(
     except IntegrityError:
         db.rollback()
         existing = scope.invoices().filter(
-            Invoice.invoice_number == invoice_number, Invoice.workshop_id == workshop.id,
+            Invoice.invoice_number == invoice_number,
+            Invoice.workshop_id == workshop.id,
+            Invoice.profile_id == scope.profile_id,
         ).first()
         if existing:
             return {
@@ -2246,11 +2927,37 @@ async def audit_pdf_upload(
         ))
     db.commit()
 
+    # Disparo etapa 5 — Auditoría Post-Pago. Requiere declaración. El parte
+    # policial se exige sólo si la política de gravedad lo demanda.
+    post_audit_result = None
+    from backend.police_report_policy import requires_police_report as _req_pr
+    decl_obj = db.query(AccidentDeclaration).filter(
+        AccidentDeclaration.siniestro_id == siniestro.id_siniestro
+    ).first()
+    has_decl = decl_obj is not None
+    has_pr = db.query(PoliceReport).filter(
+        PoliceReport.siniestro_id == siniestro.id_siniestro
+    ).first() is not None
+    pr_required_local, _ = _req_pr(siniestro, decl_obj)
+    if has_decl and (has_pr or not pr_required_local):
+        try:
+            agent = AuditAgent(db, profile_id=scope.profile_id)
+            post_audit_result = agent.audit_post_payment(
+                siniestro.id_siniestro, invoice_id=invoice.id,
+            )
+        except Exception as e:
+            # No bloquear la carga si la auditoría falla; queda como pendiente.
+            post_audit_result = {"error": str(e)[:200]}
+
     return {
         "filename": file.filename, "invoice_id": invoice.id,
         "invoice_extracted": invoice_data, "status": "pending",
         "is_test": bool(invoice.is_test),
-        "message": "Factura cargada y añadida a la cola de auditoría.",
+        "post_payment_audit": post_audit_result,
+        "message": "Factura cargada" + (
+            " y auditoría post-pago ejecutada." if post_audit_result and not post_audit_result.get("error")
+            else " y añadida a la cola de auditoría."
+        ),
     }
 
 
@@ -2942,6 +3649,7 @@ def get_claim_workspace(
             "audit_id": a.id, "engine": a.audit_engine or "rules",
             "status": a.status.value, "risk_score": a.risk_score or 0,
             "total_overcharge": a.total_overcharge or 0,
+            "audit_stage": a.audit_stage.value if a.audit_stage else "legacy",
             "audited_at": a.audited_at.isoformat() if a.audited_at else None,
             "reviewed_by": a.reviewed_by or "",
             "reviewed_at": a.reviewed_at.isoformat() if a.reviewed_at else None,

@@ -5,7 +5,7 @@ import {
     loadDashboard, loadAuditPanel, runFullAudit, toggleIncludeTest, triggerDeepSeekInsight,
     skipAuditGuide, reactivateAuditGuide, openWorkflowTarget, nextDemoGuide, prevDemoGuide,
 } from "./pages/dashboard.js";
-import { loadClaimWorkspace, switchWorkspaceTab } from "./pages/claimWorkspace.js";
+import { loadClaimWorkspace, switchWorkspaceTab, switchExpedienteTab } from "./pages/claimWorkspace.js";
 import {
     loadAuditorias, setAuditSearch, setAuditTab, toggleAuditIncludeTest, clearAuditWorkflowFocus, openReviewedAudit,
 } from "./pages/auditorias.js";
@@ -22,11 +22,11 @@ import {
     loadSiniestros, toggleClaimPreview,
     openSummaryModal, closeSummaryModal,
     setClaimsSearch, setClaimsTypeFilter, setClaimsStatusFilter, setClaimsSort, clearClaimsWorkflowFocus,
-    toggleClaimForm, submitNewClaim,
+    toggleClaimForm, submitNewClaim, handleWizardUpload,
 } from "./pages/siniestros.js";
 import {
     loadUploadPage, genRandomFactura, clearGeneratedFacturas,
-    setUploadIsTest, handleUploadFile, auditTestPdfDirect,
+    setUploadIsTest, setUploadDocType, handleUploadFile, auditTestPdfDirect,
 } from "./pages/upload.js";
 import {
     loadPendingDetail, triggerJitAudit, triggerRulesAudit,
@@ -72,7 +72,7 @@ Object.assign(window, {
     runFullAudit, toggleIncludeTest, triggerDeepSeekInsight,
     loadAuditPanel, skipAuditGuide, reactivateAuditGuide,
     openWorkflowTarget, nextDemoGuide, prevDemoGuide,
-    loadClaimWorkspace, switchWorkspaceTab,
+    loadClaimWorkspace, switchWorkspaceTab, switchExpedienteTab,
     setAuditSearch, setAuditTab, toggleAuditIncludeTest, clearAuditWorkflowFocus, openReviewedAudit,
     toggleTariffForm, submitNewTariff, deleteTariff,
     toggleTarifCat, toggleAllTarif, editTariff, cancelTariff, saveTariff,
@@ -81,8 +81,8 @@ Object.assign(window, {
     toggleClaimPreview,
     openSummaryModal, closeSummaryModal,
     setClaimsSearch, setClaimsTypeFilter, setClaimsStatusFilter, setClaimsSort, clearClaimsWorkflowFocus,
-    toggleClaimForm, submitNewClaim,
-    genRandomFactura, clearGeneratedFacturas, setUploadIsTest,
+    toggleClaimForm, submitNewClaim, handleWizardUpload,
+    genRandomFactura, clearGeneratedFacturas, setUploadIsTest, setUploadDocType,
     handleUploadFile, auditTestPdfDirect,
     triggerJitAudit, triggerRulesAudit,
     auditAction, previewReport, reAuditWith,

@@ -9,6 +9,8 @@ Reglas implementadas:
   5. InvoiceResubmissionRule  — re-facturación: número de factura ya procesado en historial
 """
 import json
+import re
+from datetime import datetime
 from typing import List, Dict, Any, Optional
 from backend.models import (
     InvoiceItem, TariffItem,
@@ -343,17 +345,355 @@ class InvoiceResubmissionRule(BaseRule):
         return findings
 
 
+class DeclarationCompletenessRule(BaseRule):
+    """Auditoría INICIAL — valida que la declaración esté completa.
+
+    Campos críticos del FR.RE.100 que deben estar presentes para considerar
+    el expediente sólido. La ausencia se marca como hallazgo INFO/WARNING
+    para que el analista lo subsane antes de avanzar.
+    """
+    name = "declaration_completeness"
+    description = "Verifica que campos críticos de la declaración estén presentes"
+
+    CRITICAL_FIELDS = [
+        ("asegurado_nombre", "Nombre del asegurado"),
+        ("veh_placa", "Placa del vehículo"),
+        ("veh_chasis", "Chasis del vehículo"),
+        ("accidente_fecha", "Fecha del accidente"),
+        ("accidente_lugar", "Lugar del accidente"),
+        ("accidente_descripcion", "Descripción del accidente"),
+        ("conductor_cedula", "Cédula del conductor"),
+    ]
+
+    def evaluate(self, context: Dict[str, Any]) -> List[Finding]:
+        decl = context.get("declaration") or {}
+        if not decl:
+            return [Finding(
+                finding_type=FindingType.MISSING_DOCUMENT,
+                severity=FindingSeverity.CRITICAL,
+                title="Falta la Declaración de Accidente",
+                description="No se ha cargado el formulario FR.RE.100 para este siniestro.",
+                recommendation="Cargar la Declaración antes de avanzar al Parte Policial.",
+            )]
+        findings = []
+        missing = [label for k, label in self.CRITICAL_FIELDS if not decl.get(k)]
+        if missing:
+            findings.append(Finding(
+                finding_type=FindingType.DECLARATION_INCONSISTENCY,
+                severity=FindingSeverity.WARNING,
+                title="Declaración con campos críticos vacíos",
+                description=(
+                    f"Faltan {len(missing)} campos críticos: {', '.join(missing)}. "
+                    f"La auditoría posterior podría ser inconcluyente."
+                ),
+                expected_value="Todos los campos críticos completos",
+                actual_value=f"{len(missing)} faltantes",
+                recommendation="Solicitar al asegurado complete los campos faltantes.",
+            ))
+        return findings
+
+
+def _norm_plate(s: str) -> str:
+    return re.sub(r"[^A-Z0-9]", "", (s or "").upper())
+
+
+def _norm_text(s: str) -> str:
+    return re.sub(r"\s+", " ", (s or "").strip().lower())
+
+
+class PoliceDeclarationMismatchRule(BaseRule):
+    """Auditoría POST-PAGO — cruza Declaración ↔ Parte Policial.
+
+    Detecta divergencias en placa, fecha del hecho y lugar entre lo declarado
+    por el asegurado y lo registrado por la autoridad policial.
+    """
+    name = "police_declaration_mismatch"
+    description = "Detecta divergencias entre la declaración del asegurado y el parte policial"
+
+    def evaluate(self, context: Dict[str, Any]) -> List[Finding]:
+        decl = context.get("declaration") or {}
+        pr = context.get("police_report") or {}
+        if not decl or not pr:
+            return []
+
+        findings = []
+
+        # Placa
+        decl_plate = _norm_plate(decl.get("veh_placa", ""))
+        pr_plate = _norm_plate(pr.get("veh_placa", ""))
+        if decl_plate and pr_plate and decl_plate != pr_plate:
+            findings.append(Finding(
+                finding_type=FindingType.POLICE_DECLARATION_MISMATCH,
+                severity=FindingSeverity.CRITICAL,
+                title="Placa difiere entre declaración y parte policial",
+                description=(
+                    f"La declaración reporta la placa '{decl.get('veh_placa')}' pero el "
+                    f"parte policial registra '{pr.get('veh_placa')}'. "
+                    f"Posible fraude: vehículo distinto al asegurado."
+                ),
+                expected_value=decl.get("veh_placa", ""),
+                actual_value=pr.get("veh_placa", ""),
+                recommendation="ESCALAR. Verificar identidad del vehículo siniestrado.",
+            ))
+
+        # Fecha del hecho: tolerancia de 1 día
+        decl_fecha = decl.get("accidente_fecha") or ""
+        pr_fecha = pr.get("fecha_hecho") or ""
+        if decl_fecha and pr_fecha:
+            try:
+                d1 = datetime.fromisoformat(decl_fecha).date()
+                d2 = datetime.fromisoformat(pr_fecha).date()
+                if abs((d1 - d2).days) > 1:
+                    findings.append(Finding(
+                        finding_type=FindingType.POLICE_DECLARATION_MISMATCH,
+                        severity=FindingSeverity.WARNING,
+                        title="Fecha del accidente difiere del parte policial",
+                        description=(
+                            f"Declaración: {d1.isoformat()}. Parte policial: {d2.isoformat()}. "
+                            f"Diferencia: {abs((d1 - d2).days)} días."
+                        ),
+                        expected_value=d1.isoformat(),
+                        actual_value=d2.isoformat(),
+                        difference=float(abs((d1 - d2).days)),
+                        recommendation="Solicitar aclaración al asegurado sobre la cronología.",
+                    ))
+            except (ValueError, TypeError):
+                pass
+
+        # Lugar — comparación textual relajada (al menos una palabra común relevante)
+        decl_lugar = _norm_text(decl.get("accidente_lugar", ""))
+        pr_calle = _norm_text(pr.get("calle_1", "") + " " + pr.get("calle_2", ""))
+        if decl_lugar and pr_calle:
+            decl_tokens = {w for w in re.findall(r"[a-záéíóúñ]{4,}", decl_lugar)}
+            pr_tokens = {w for w in re.findall(r"[a-záéíóúñ]{4,}", pr_calle)}
+            common = decl_tokens & pr_tokens
+            if not common and len(decl_tokens) > 1 and len(pr_tokens) > 1:
+                findings.append(Finding(
+                    finding_type=FindingType.POLICE_DECLARATION_MISMATCH,
+                    severity=FindingSeverity.WARNING,
+                    title="Lugar del accidente difiere notoriamente del parte",
+                    description=(
+                        f"Declaración: '{decl.get('accidente_lugar')}'. "
+                        f"Parte: '{pr.get('calle_1')} / {pr.get('calle_2')}'. "
+                        f"Sin palabras geográficas en común."
+                    ),
+                    expected_value=decl.get("accidente_lugar", "")[:100],
+                    actual_value=(pr.get("calle_1", "") + " / " + pr.get("calle_2", ""))[:100],
+                    recommendation="Verificar coordenadas/dirección con el asegurado.",
+                ))
+
+        # Robo: si el parte marca robo pero la declaración no lo menciona en
+        # descripción ni en daños, marcar incoherencia narrativa
+        tipos = pr.get("tipos_accidente") or []
+        if "robo" in tipos:
+            txt = _norm_text(
+                (decl.get("accidente_descripcion") or "") + " " + (decl.get("veh_detalle_danos") or "")
+            )
+            if "robo" not in txt and "sustra" not in txt:
+                findings.append(Finding(
+                    finding_type=FindingType.DECLARATION_INCONSISTENCY,
+                    severity=FindingSeverity.WARNING,
+                    title="Parte indica ROBO pero declaración no lo menciona",
+                    description=(
+                        "El parte policial clasifica el siniestro como ROBO, pero la "
+                        "narrativa del asegurado no menciona robo ni sustracción."
+                    ),
+                    expected_value="Mención coherente del robo",
+                    actual_value="Descripción no menciona robo",
+                    recommendation="Solicitar aclaración detallada al asegurado.",
+                ))
+
+        return findings
+
+
+class PoliceReportRequiredRule(BaseRule):
+    """Auditoría POST-PAGO — el parte policial es obligatorio sólo cuando la
+    política de gravedad lo exige. El contexto trae el flag `pr_required` y
+    las razones; si no es requerido, no se emite hallazgo por su ausencia."""
+    name = "police_report_required"
+    description = "Verifica parte policial cuando la política de gravedad lo exige"
+
+    def evaluate(self, context: Dict[str, Any]) -> List[Finding]:
+        pr = context.get("police_report")
+        pr_required = bool(context.get("pr_required", False))
+        pr_reasons = context.get("pr_reasons", []) or []
+        if pr:
+            return []
+        if not pr_required:
+            # Siniestro de baja gravedad — parte no era exigido, no hay hallazgo.
+            return []
+        reasons_txt = "; ".join(pr_reasons) if pr_reasons else "Política de gravedad."
+        return [Finding(
+            finding_type=FindingType.MISSING_POLICE_REPORT,
+            severity=FindingSeverity.CRITICAL,
+            title="Falta el Parte Policial (requerido por gravedad)",
+            description=(
+                f"No se encontró el parte policial del Ministerio del Interior. "
+                f"Es obligatorio para este siniestro. Motivos: {reasons_txt}"
+            ),
+            expected_value="Parte policial cargado",
+            actual_value="No presente",
+            recommendation="Cargar parte policial antes de aprobar la facturación.",
+        )]
+
+
+class InvoiceDeclarationMismatchRule(BaseRule):
+    """Auditoría POST-PAGO — cruza Factura ↔ Declaración (placa)."""
+    name = "invoice_declaration_mismatch"
+    description = "Detecta divergencia entre la placa de la factura y la declaración"
+
+    def evaluate(self, context: Dict[str, Any]) -> List[Finding]:
+        decl = context.get("declaration") or {}
+        invoice_plate = _norm_plate(context.get("invoice_plate", ""))
+        decl_plate = _norm_plate(decl.get("veh_placa", ""))
+        if not invoice_plate or not decl_plate:
+            return []
+        if invoice_plate == decl_plate:
+            return []
+        return [Finding(
+            finding_type=FindingType.INVOICE_DECLARATION_MISMATCH,
+            severity=FindingSeverity.CRITICAL,
+            title="Placa de la factura no coincide con la declaración",
+            description=(
+                f"La factura reporta placa '{context.get('invoice_plate')}' "
+                f"pero la declaración tiene '{decl.get('veh_placa')}'. "
+                f"Probable factura aplicada a vehículo distinto al siniestrado."
+            ),
+            expected_value=decl.get("veh_placa", ""),
+            actual_value=context.get("invoice_plate", ""),
+            recommendation="ESCALAR. No procesar pago hasta clarificar.",
+        )]
+
+
+class TariffMatchByDescriptionRule(BaseRule):
+    """Fallback para facturas formato real (sin códigos de tarifario).
+
+    Cuando `code` está vacío, intenta matchear la descripción del ítem contra
+    el tariff_map por keywords. Si encuentra match y el unit_price excede el
+    max_price con tolerancia, emite OVERCHARGE.
+    """
+    name = "tariff_match_by_description"
+    description = "Fuzzy match descripción→tarifario para facturas sin códigos"
+
+    KEYWORD_INDEX = {
+        # keyword (lowercased) → categoría/keyword del tarifario
+        "parabrisas": "PAR",
+        "faro": "FAR",
+        "guardachoque": "GUA",
+        "puerta": "PUE",
+        "capo": "CAP",
+        "capó": "CAP",
+        "espejo": "ESP",
+        "radiador": "RAD",
+        "motor": "MOT",
+        "pintura": "PIN",
+        "lija": "LIJ",
+        "masilla": "LIJ",
+        "soldadura": "SOL",
+        "mano de obra": "MO",
+        "latoneria": "LAM",
+        "latonería": "LAM",
+        "carroceria": "LAM",
+        "carrocería": "LAM",
+        "grua": "GRU",
+        "alineacion": "ALI",
+        "vidrio": "VID",
+        "cerradura": "CER",
+        "radio": "RAD02",
+    }
+
+    def evaluate(self, context: Dict[str, Any]) -> List[Finding]:
+        findings = []
+        items: List[Dict] = context.get("invoice_items", [])
+        tariff_map: Dict[str, Dict] = context.get("tariff_map", {})
+        if not tariff_map:
+            return findings
+
+        for item in items:
+            if item.get("code"):
+                continue  # ya cubierto por PriceOverchargeRule
+            desc_lower = (item.get("description") or "").lower()
+            if not desc_lower:
+                continue
+            matched_keyword = None
+            for kw in self.KEYWORD_INDEX:
+                if kw in desc_lower:
+                    matched_keyword = self.KEYWORD_INDEX[kw]
+                    break
+            if not matched_keyword:
+                continue
+            # Encontrar el tariff cuyo code contenga ese fragmento
+            candidates = [t for code, t in tariff_map.items() if matched_keyword in code]
+            if not candidates:
+                continue
+            # Tomar el de max_price más bajo como referencia conservadora
+            ref = min(candidates, key=lambda t: t["max_price"])
+            max_price = ref["max_price"]
+            tolerance = ref.get("tolerance_pct", 10.0)
+            threshold = max_price * (1 + tolerance / 100)
+            unit_price = float(item.get("unit_price", 0) or 0)
+            qty = float(item.get("quantity", 1) or 1)
+
+            # Las facturas formato simple suelen agrupar (qty=1, unit_price=total).
+            # Si unit_price >> tariff típico, podría ser un agregado legítimo;
+            # marcamos sólo cuando es muy superior (>3x del threshold base) para
+            # reducir falsos positivos.
+            if unit_price > threshold * 3:
+                difference = (unit_price - max_price) * qty
+                findings.append(Finding(
+                    finding_type=FindingType.OVERCHARGE,
+                    severity=FindingSeverity.WARNING,
+                    title=f"Posible sobrecobro (descripción libre): {item['description'][:60]}",
+                    description=(
+                        f"La descripción '{item['description']}' coincide con tarifario "
+                        f"'{ref['code']}' (máx ${max_price:.2f}). Unit price ${unit_price:.2f} "
+                        f"excede {threshold * 3:.2f} (3× tolerancia)."
+                    ),
+                    item_description=item["description"],
+                    expected_value=f"~${max_price:.2f}",
+                    actual_value=f"${unit_price:.2f}",
+                    difference=difference,
+                    recommendation="Solicitar detalle desglosado al taller.",
+                ))
+        return findings
+
+
+# ── Motor ──────────────────────────────────────────────
+
+
 class RulesEngine:
     """Motor de reglas que ejecuta todas las reglas de auditoría."""
 
-    def __init__(self):
-        self.rules: List[BaseRule] = [
-            InvoiceResubmissionRule(),   # Tarea 3 — re-facturación (primero: falla rápida)
-            PriceOverchargeRule(),        # Tarea 1 — sobrecobro
-            DuplicateChargeRule(),        # Tarea 1 — duplicados en la factura
-            QuantityAnomalyRule(),        # Tarea 2 — cantidades anómalas
-            IncoherenceRule(),            # Tarea 1 — coherencia mecánica
-        ]
+    def __init__(self, stage: str = "invoice"):
+        """stage: 'invoice' (legacy/post-payment con factura),
+                  'initial' (etapa 2: sólo declaración),
+                  'post_payment' (etapa 5: declaración+parte+factura)."""
+        if stage == "initial":
+            self.rules: List[BaseRule] = [
+                DeclarationCompletenessRule(),
+            ]
+        elif stage == "post_payment":
+            self.rules = [
+                DeclarationCompletenessRule(),
+                PoliceReportRequiredRule(),
+                PoliceDeclarationMismatchRule(),
+                InvoiceDeclarationMismatchRule(),
+                InvoiceResubmissionRule(),
+                PriceOverchargeRule(),
+                TariffMatchByDescriptionRule(),
+                DuplicateChargeRule(),
+                QuantityAnomalyRule(),
+                IncoherenceRule(),
+            ]
+        else:
+            # Comportamiento legacy: igual que antes del rediseño
+            self.rules = [
+                InvoiceResubmissionRule(),
+                PriceOverchargeRule(),
+                DuplicateChargeRule(),
+                QuantityAnomalyRule(),
+                IncoherenceRule(),
+            ]
 
     def run_audit(self, context: Dict[str, Any]) -> List[Finding]:
         """Ejecutar todas las reglas y recopilar hallazgos."""

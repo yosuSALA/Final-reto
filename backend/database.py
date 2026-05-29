@@ -52,6 +52,7 @@ def init_db():
         Profile, Siniestro, Workshop, Invoice, InvoiceItem,
         TariffItem, AuditResult, AuditFinding,
         Poliza, AseguradoSintetico, Vehiculo, Documento, AuditLog,
+        AccidentDeclaration, PoliceReport,
     )
     Base.metadata.create_all(bind=engine)
     _migrate_columns()
@@ -83,6 +84,8 @@ def _migrate_columns():
         ("invoices", "profile_id", f"VARCHAR(36) REFERENCES profiles(id)"),
         ("tariff_items", "profile_id", f"VARCHAR(36) REFERENCES profiles(id)"),
         ("audit_results", "profile_id", f"VARCHAR(36) REFERENCES profiles(id)"),
+        # Flujo de 6 etapas (Declaración + Parte Policial + Factura)
+        ("audit_results", "audit_stage", "VARCHAR(20) DEFAULT 'legacy'"),
     ]
 
     with engine.begin() as conn:
@@ -97,6 +100,65 @@ def _migrate_columns():
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {decl}"))
                 except Exception:
                     pass
+
+        # Cambiar invoice_id en audit_results a NULLABLE (la auditoría INITIAL
+        # del flujo de 6 etapas se ejecuta antes de que exista factura).
+        # SQLite no soporta ALTER COLUMN; usamos recreate + copy + rename.
+        try:
+            cols = conn.execute(text("PRAGMA table_info(audit_results)")).fetchall()
+        except Exception:
+            cols = []
+        invoice_col = next((c for c in cols if c[1] == "invoice_id"), None)
+        # c[3] == notnull (1 = NOT NULL, 0 = NULL)
+        if invoice_col and invoice_col[3] == 1:
+            try:
+                # 1) detectar el conjunto exacto de columnas existentes para no
+                #    olvidar ninguna en el INSERT.
+                col_defs = []
+                col_names = []
+                for c in cols:
+                    name = c[1]
+                    ctype = c[2] or ""
+                    notnull = c[3]
+                    default = c[4]
+                    pk = c[5]
+                    parts = [name, ctype]
+                    if pk:
+                        parts.append("PRIMARY KEY")
+                        if "INTEGER" in ctype.upper():
+                            parts.append("AUTOINCREMENT" if False else "")  # SQLite autoincrement implícito por INTEGER PK
+                    # invoice_id pasa a NULL; el resto preserva NOT NULL si lo tenía
+                    if notnull and name not in ("invoice_id",) and not pk:
+                        parts.append("NOT NULL")
+                    if default is not None:
+                        parts.append(f"DEFAULT {default}")
+                    col_defs.append(" ".join(p for p in parts if p))
+                    col_names.append(name)
+
+                cols_sql = ", ".join(col_defs)
+                names_sql = ", ".join(col_names)
+
+                # Limpiar staging si quedó de un intento previo fallido (idempotencia)
+                conn.execute(text("DROP TABLE IF EXISTS audit_results_new"))
+                # Desactivar FK durante la recreación: audit_findings tiene FK
+                # contra audit_results y bloquearía el DROP. SQLite preserva
+                # los datos referenciados porque mantenemos los mismos ids.
+                conn.execute(text("PRAGMA foreign_keys=OFF"))
+                try:
+                    conn.execute(text(f"CREATE TABLE audit_results_new ({cols_sql})"))
+                    conn.execute(text(
+                        f"INSERT INTO audit_results_new ({names_sql}) "
+                        f"SELECT {names_sql} FROM audit_results"
+                    ))
+                    conn.execute(text("DROP TABLE audit_results"))
+                    conn.execute(text("ALTER TABLE audit_results_new RENAME TO audit_results"))
+                finally:
+                    conn.execute(text("PRAGMA foreign_keys=ON"))
+            except Exception as e:
+                # Si la migración falla, dejamos la tabla original. Logueamos
+                # para diagnóstico (la auditoría INITIAL fallará al insertar).
+                import sys as _sys
+                print(f"[migrate] audit_results invoice_id->NULL falló: {e}", file=_sys.stderr)
 
 
 def _ensure_default_profile():

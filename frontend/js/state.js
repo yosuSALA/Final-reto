@@ -28,6 +28,9 @@ export const state = {
 
     // Siniestros view
     claimInvoicesCache: {},
+    claimTimelineCache: {},
+    claimDeclarationCache: {},
+    claimPoliceCache: {},
     claimExpanded: null,
     claimsSearchTerm: "",
     claimsSortBy: "incident_date",
@@ -40,6 +43,7 @@ export const state = {
     generatedFacturas: [],
     uploadResult: null,
     uploadIsTest: true,
+    uploadDocType: "declaration",
 
     // Filtros globales
     includeTest: true,

@@ -8,12 +8,87 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from backend.models import (
     AseguradoSintetico, Poliza, Vehiculo, Documento, Siniestro,
-    Workshop, Invoice, InvoiceItem, Ramo, Cobertura, EstadoSiniestro
+    Workshop, Invoice, InvoiceItem, AccidentDeclaration, PoliceReport,
+    Ramo, Cobertura, EstadoSiniestro
 )
 from backend.fraud_scoring import update_siniestro_fraud_data
 from backend.database import DEFAULT_PROFILE_ID
 
 PID = DEFAULT_PROFILE_ID
+
+
+def _seed_six_stage_documents(db: Session, claims):
+    """Crea declaracion y parte policial sinteticos para el wizard de 6 etapas."""
+    from backend.police_report_policy import requires_police_report
+
+    for claim in claims:
+        veh = claim.vehiculo_rel
+        if not db.query(AccidentDeclaration).filter(AccidentDeclaration.siniestro_id == claim.id_siniestro).first():
+            decl = AccidentDeclaration(
+                siniestro_id=claim.id_siniestro,
+                profile_id=PID,
+                doc_id=f"DOC-DA-{claim.id_siniestro:04d}",
+                siniestro_ref=f"SIN-{claim.id_siniestro}",
+                modo="Sintetico seed",
+                fecha_firma=claim.fecha_reporte,
+                asegurado_nombre=claim.id_asegurado,
+                poliza_numero=claim.id_poliza,
+                veh_marca=veh.marca if veh else None,
+                veh_modelo=veh.modelo if veh else None,
+                veh_placa=veh.placa if veh else None,
+                veh_motor=veh.motor if veh else None,
+                veh_chasis=veh.chasis if veh else None,
+                veh_detalle_danos=claim.descripcion,
+                accidente_lugar=claim.sucursal or "N/D",
+                accidente_fecha=claim.fecha_ocurrencia,
+                accidente_descripcion=claim.descripcion,
+                accidente_responsable="Por determinar",
+                conductor_nombre=claim.id_asegurado,
+                autoridades_lugar_asistencia_medica="No se reportan lesionados",
+                raw_extract=json.dumps({"seed": True, "claim_number": f"SIN-{claim.id_siniestro}"}),
+                source_filename=f"seed_declaration_SIN-{claim.id_siniestro}.pdf",
+            )
+            db.add(decl)
+            db.flush()
+        else:
+            decl = db.query(AccidentDeclaration).filter(AccidentDeclaration.siniestro_id == claim.id_siniestro).first()
+
+        required, _ = requires_police_report(claim, decl)
+        if required and not db.query(PoliceReport).filter(PoliceReport.siniestro_id == claim.id_siniestro).first():
+            pr = PoliceReport(
+                siniestro_id=claim.id_siniestro,
+                profile_id=PID,
+                doc_id=f"DOC-PP-{claim.id_siniestro:04d}",
+                siniestro_ref=f"SIN-{claim.id_siniestro}",
+                parte_no=f"PT-SEED-{claim.id_siniestro:06d}",
+                fecha_elaboracion=claim.fecha_reporte,
+                servicio_policial="Transito",
+                zona=claim.sucursal or "N/D",
+                calle_1=claim.sucursal or "N/D",
+                fecha_hecho=claim.fecha_ocurrencia,
+                hora_aproximada="12:00",
+                tipo_via="Urbana",
+                estado_via="Buena",
+                clasificacion_tipo="Administrativo",
+                flagrancia="NO",
+                operativo="ORDINARIO",
+                tipos_accidente=claim.cobertura.value if claim.cobertura else "siniestro",
+                consecuencias="Daños materiales",
+                clima="Despejado",
+                dia_festivo="NO",
+                circunstancias=claim.descripcion,
+                p1_nombre=claim.id_asegurado,
+                p1_estado="ILESO",
+                veh_placa=veh.placa if veh else None,
+                veh_marca=veh.marca if veh else None,
+                veh_modelo=veh.modelo if veh else None,
+                veh_anio=veh.anio if veh else None,
+                veh_estado="Con danos",
+                personal_policial=json.dumps([{"nombre": "Agente Seed", "grado": "Cabo"}]),
+                raw_extract=json.dumps({"seed": True, "claim_number": f"SIN-{claim.id_siniestro}"}),
+                source_filename=f"seed_police_report_SIN-{claim.id_siniestro}.pdf",
+            )
+            db.add(pr)
 
 def seed_fraud_data(db: Session):
     # Evitar doble ejecución
@@ -398,6 +473,9 @@ def seed_fraud_data(db: Session):
                     total_price=round(subtotal * 0.4, 2)
                 )
             ])
+    db.flush()
+
+    _seed_six_stage_documents(db, [claim for claim, _ in added_claims])
     db.flush()
 
     # 7. Calcular y persistir fraud score para todos los siniestros (incluyendo los 5 iniciales)
