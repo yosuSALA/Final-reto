@@ -183,21 +183,8 @@ Endpoints de inteligencia operativa accesibles desde el dashboard:
 - `GET /api/audit-results/{id}`: detalle de auditoría.
 - `GET /api/audit-results/{id}/report-preview`: reporte PDF.
 - `GET /api/invoices/pending`: facturas pendientes de auditoría.
-
-### Decisiones
-
-- `POST /api/audit-results/{id}/approve`: aprobar.
-- `POST /api/audit-results/{id}/reject`: rechazar.
-- `POST /api/audit-results/{id}/escalate`: escalar.
-- `POST /api/audit-results/{id}/send-to-legal`: derivar a Legal.
-- `GET /api/legal/notifications`: siniestros derivados a Legal.
-
-### Scoring de Fraude
-
-- `GET /api/siniestros/{id}/fraud-score`: score de fraude individual.
-- `POST /api/siniestros/score-all`: recalcular scores de todos los siniestros.
-- `GET /api/siniestros/ranking`: ranking por score descendente.
-- `GET /api/fraud-dashboard`: dashboard de métricas de fraude.
+- `GET /api/dashboard`: KPIs principales.
+- `GET /api/dashboard/claims-by-day`: serie temporal de siniestros por día.
 
 ### Tarifario
 
@@ -206,11 +193,6 @@ Endpoints de inteligencia operativa accesibles desde el dashboard:
 - `PUT /api/tariffs/{id}`: actualizar entrada.
 - `DELETE /api/tariffs/{id}`: eliminar entrada.
 - `POST /api/tariffs/import-csv`: importar tarifario desde CSV.
-
-### Dashboard
-
-- `GET /api/dashboard`: KPIs principales.
-- `GET /api/dashboard/claims-by-day`: serie temporal de siniestros por día.
 
 ### Perfiles y Seguridad
 
@@ -221,15 +203,8 @@ Endpoints de inteligencia operativa accesibles desde el dashboard:
 - `PUT /api/profiles/{id}`: actualizar perfil.
 - `PUT /api/profiles/{id}/password`: cambiar contraseña.
 - `DELETE /api/profiles/{id}`: eliminar perfil (soft delete).
-
-### Administración
-
-- `GET /api/admin/audit-log`: log de auditoría de acciones del sistema.
-- `GET /api/admin/audit-log/stats`: estadísticas del log de auditoría.
-
-### Chatbot
-
-- `POST /api/agent/query`: consulta al chatbot inteligente.
+- `GET /api/admin/audit-log`: log de auditoría de acciones.
+- `GET /api/admin/audit-log/stats`: estadísticas del log.
 
 ## Documentación
 
