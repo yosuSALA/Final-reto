@@ -8,7 +8,7 @@
 
 ## Resumen ejecutivo
 
-Sistema de auditoría agéntica para aseguradoras que combina un motor de reglas determinístico con IA generativa (Gemini 2.5 Flash) para detectar fraude en siniestros y facturas de talleres mecánicos. La arquitectura es intencional­mente compacta: un solo proceso Python sirve tanto la API REST como los archivos estáticos del frontend.
+Sistema de auditoría agéntica para aseguradoras que combina un motor de reglas determinístico con IA generativa (Deepseek) para detectar fraude en siniestros y facturas de talleres mecánicos. La arquitectura es intencional­mente compacta: un solo proceso Python sirve tanto la API REST como los archivos estáticos del frontend.
 
 ---
 
@@ -39,7 +39,7 @@ backend/
 ├── fraud_scoring.py  — Motor de scoring: 14 señales + 7 reglas (score 0-100)
 ├── rules_engine.py   — 5 reglas de auditoría de facturas (PriceOvercharge, Duplicate…)
 ├── agent.py          — AuditAgent: orquesta pipeline reglas → score → AuditResult
-├── gemini_auditor.py — GeminiAuditor: CoT, few-shot, self-reflection, retry
+├── deepseek_auditor.py — GeminiAuditor: CoT, few-shot, self-reflection, retry
 ├── chatbot_agent.py  — Chatbot: inferencia SQL + reescritura LLM (DeepSeek / Gemini)
 ├── pdf_extractor.py  — Extracción de facturas PDF con regex + pdfplumber
 ├── pdf_generator.py  — Generación de reportes PDF con reportlab
@@ -54,9 +54,9 @@ backend/
 
 | Modelo / Técnica | Proveedor | Uso |
 |-----------------|-----------|-----|
-| **Gemini 2.5 Flash** | Google AI (`google-genai`) | Auditoría cognitiva de facturas: Chain-of-Thought, few-shot calibration, self-reflection pass, validación semántica + retry |
+| **Deepseek V4 Flash** | Auditoría cognitiva de facturas: Chain-of-Thought, few-shot calibration, self-reflection pass, validación semántica + retry |
 | **DeepSeek Chat** (`deepseek-chat`) | DeepSeek API (REST directo) | Chatbot conversacional: reescritura elocuente de datos SQL |
-| **Gemini 2.5 Flash** (fallback) | Google AI | Chatbot cuando no hay clave DeepSeek |
+| **Deepseek V4 Flash** (fallback) | Google AI | Chatbot cuando no hay clave DeepSeek |
 | **Formateador local** | Ninguno | Fallback técnico si no hay ninguna API key; formatea datos SQL en Markdown |
 | **SequenceMatcher** | Python stdlib (`difflib`) | Señal S13: similitud de narrativas ≥ 75 % → alerta de clonación |
 
@@ -165,7 +165,7 @@ frontend/
 
 | Variable | Obligatoria | Descripción |
 |----------|------------|-------------|
-| `GOOGLE_API_KEY` | No | Habilita el motor IA Gemini. Sin ella, modo mock. |
+| `DEEPSEEK_API_KEY` | No | Habilita el motor IA Deepseek V4 Flash. Sin ella, modo mock. |
 | `DEEPSEEK_API_KEY` | No | Chatbot con DeepSeek. Fallback a Gemini o formateador local. |
 | `DATABASE_PATH` | No | Ruta del archivo SQLite (default: `auditor.db`) |
 | `PORT` | No | Puerto Express proxy (default: `8010`) |
@@ -191,7 +191,7 @@ Motor elegido por el analista                             │
     │      Duplicate, Quantity, Incoherence,               │
     │      Resubmission) → findings[]                     │
     │                                                      │
-    └─ 🤖 gemini_auditor.py (CoT + few-shot              │
+    └─ 🤖 deepseek_auditor.py (CoT + few-shot              │
            + self-reflection) → findings[]                │
     │                                                      │
     ▼                                                      │
