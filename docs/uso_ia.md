@@ -2,7 +2,7 @@
 
 El prototipo utiliza técnicas avanzadas de Inteligencia Artificial y Procesamiento de Lenguaje Natural (NLP) a través de un enfoque híbrido.
 
-## 1. Auditoría Cognitiva de Facturas (Gemini 2.5 Flash)
+## 1. Auditoría Cognitiva de Facturas (Deepseek V4 Flash)
 
 Para auditar facturas complejas de talleres frente a los siniestros y al tarifario pactado, se implementa la clase `GeminiAuditor` que sigue los siguientes patrones:
 
