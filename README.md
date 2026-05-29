@@ -1,21 +1,21 @@
 # Miraclex — Detector Agentico de Fraude en Siniestros | Hackathon 2026
 
-Plataforma inteligente de Aseguradora del Sur para auditar automaticamente facturas de siniestros (vehiculares, salud, vida, hogar, generales), priorizar casos criticos y proteger la reserva tecnica. Detecta fraude, sobrecobros, duplicados e incoherencias antes del pago, combinando un motor de reglas deterministicas con DeepSeek V4 Flash para evaluacion de riesgo.
+Plataforma inteligente de Aseguradora del Sur para auditar automáticamente facturas de siniestros (vehiculares, salud, vida, hogar, generales), priorizar casos críticos y proteger la reserva técnica. Detecta fraude, sobrecobros, duplicados e incoherencias antes del pago, combinando un motor de reglas determinísticas con DeepSeek V4 Flash para evaluación de riesgo.
 
 ---
 
 ## 1. Resumen Ejecutivo
-El prototipo prioriza casos sospechosos para revision humana en la Unidad Antifraude. Combina:
-- Motor de reglas y scoring de riesgo
+El prototipo prioriza casos sospechosos para revisión humana en la Unidad Antifraude. Combina:
+- Motor de reglas y Risk Score
 - Auditoria de facturas de taller (PDF)
-- Dashboard ejecutivo con priorizacion
+- Dashboard ejecutivo con priorización
 - Chatbot con preguntas del jurado y consultas por siniestro
 
-Principio clave: la solucion genera alertas de posible fraude; no acusa ni decide pagos/rechazos automaticamente.
+Principio clave: La solución genera alertas de posible fraude; no acusa ni decide pagos/rechazos automáticamente.
 
 ---
 
-## 2. Planteamiento del Problema
+## 2. Planteamiento del problema
 Las aseguradoras enfrentan pérdidas millonarias debido a reclamaciones fraudulentas, que van desde inconsistencias documentales leves hasta patrones complejos como:
 - Siniestros reportados inmediatamente después de contratar la póliza o antes de vencerse (borde de vigencia).
 - Frecuencias atípicas de reclamos por parte del mismo asegurado, conductor o vehículo.
@@ -27,10 +27,10 @@ El análisis manual de estos factores es lento, costoso y propenso a errores, lo
 ---
 
 ## 3. Objetivos
-- Cargar y procesar datos sinteticos de siniestros multi-ramo (vehiculos, salud, vida, hogar, generales).
-- Detectar senales de posible fraude y calcular score 0-100.
-- Clasificar en Verde, Amarillo y Rojo con accion sugerida.
-- Explicar por que cada caso fue marcado.
+- Cargar y procesar datos sintéticos de siniestros multi-ramo (vehículos, salud, vida, hogar, generales).
+- Detectar señales de posible fraude y calcular score 0-100.
+- Clasificar en Verde, Amarillo y Rojo con acción sugerida.
+- Explicar por qué cada caso fue marcado.
 - Permitir consultas en lenguaje natural para analistas.
 
 ---
@@ -43,7 +43,7 @@ Este prototipo abarca:
 4. Asistencia por chat usando OpenCode Go (DeepSeek v4 Flash).
 5. Interfaz de usuario SPA con cola de auditoría y chat interactivo colapsables con animaciones de transiciones.
 
-No incluye: acusacion formal, conclusion legal, rechazo automatico de siniestros.
+No incluye: acusación formal, conclusion legal y rechazo automático de siniestros.
 
 ---
 
@@ -100,7 +100,7 @@ El puntaje obtenido de las 14 señales se normaliza a una escala de 0-100 y clas
 - **🟡 Amarillo (41 - 75)**: Riesgo Medio. Escalar a Unidad Antifraude para revisión documental.
 - **🔴 Rojo (76 - 100)**: Riesgo Alto. Escalar a Unidad Antifraude para inspección física especializada.
 
-Nota operativa: el score se usa para priorizar revision humana, no para decision final automatica.
+Nota operativa: El score se usa para priorizar revisión humana, no para decisión final automática.
 
 ---
 
@@ -113,7 +113,7 @@ Nota operativa: el score se usa para priorizar revision humana, no para decision
 
 ---
 
-## 10. Instalacion y Ejecucion
+## 10. Instalación y Ejecución
 
 ### 1. Variables de Entorno
 Crea un archivo `.env` en la raíz del proyecto basándote en el archivo `.env.example`:
@@ -131,13 +131,13 @@ DEEPSEEK_MODEL=deepseek-chat
 
 Nota: el backend prioriza `OPENCODE_GO_API_KEY` y usa ese gateway como fuente por defecto del chatbot.
 
-### 2. Instalacion de Dependencias
+### 2. Instalación de Dependencias
 Instala los paquetes Python:
 ```bash
 pip install -r backend/requirements.txt
 ```
 
-### 3. Inicializacion y Ejecucion del Servidor
+### 3. Inicialización y Ejecucion del Servidor
 Primero, inicia el Frontend (Express, puerto 3000):
 ```bash
 npm install
@@ -148,7 +148,7 @@ En otra terminal, inicia el Backend (FastAPI, puerto 8000):
 ```bash
 python -m uvicorn backend.main:app --reload --port 8000
 ```
-La app inicializa SQLite y carga data sintetica de demo.
+La app inicializa SQLite y carga data sintética de demo.
 
 ### 4. Ejecución de Pruebas Unitarias
 Para correr la suite de pruebas del motor de reglas:
@@ -168,10 +168,10 @@ python -m unittest tests/test_fraud_rules.py
 2. **Consultar al Asistente Antifraude**: Abre la burbuja de chat (esquina inferior derecha) y haz clic en alguna pregunta predefinida (FAQ) o formula tus propias preguntas como:
    - *¿Qué asegurados tienen mayor frecuencia de reclamos?*
    - *¿Por qué el siniestro SIN-6 fue marcado con alto riesgo?*
-3. **Revisar Siniestros por Asegurado**: Navega a la pestaña de "Siniestros" donde los casos se agrupan por asegurado. Cada fila muestra el score de posible fraude (0-100) con semaforo Verde/Amarillo/Rojo.
-4. **Consultar Riesgo con DeepSeek**: Haz clic en el boton `DeepSeek` junto a cualquier siniestro para que el chatbot analice automaticamente por que fue marcado con ese nivel de riesgo.
-5. **Ver Cola de Auditoria**: Despliega el panel colapsable flotante de pendientes (esquina inferior izquierda) para inspeccionar facturas sin auditar.
-6. **Resumen Ejecutivo**: Usa el boton `Resumen` en cada siniestro para ver historial del asegurado y del bien asegurado.
+3. **Revisar Siniestros por Asegurado**: Navega a la pestaña de "Siniestros" donde los casos se agrupan por asegurado. Cada fila muestra el score de posible fraude (0-100) con semáforo Verde/Amarillo/Rojo.
+4. **Consultar Riesgo con DeepSeek**: Haz clic en el botón `DeepSeek` junto a cualquier siniestro para que el chatbot analice automáticamente por qué fue marcado con ese nivel de riesgo.
+5. **Ver Cola de Auditoría**: Despliega el panel colapsable flotante de pendientes (esquina inferior izquierda) para inspeccionar facturas sin auditar.
+6. **Resumen Ejecutivo**: Usa el bot+on `Resumen` en cada siniestro para ver historial del asegurado y del bien asegurado.
 
 ---
 
@@ -191,11 +191,6 @@ python -m unittest tests/test_fraud_rules.py
 
 ## 14. Entregables y Evidencia
 - Matriz de cumplimiento: `docs/MATRIZ_CUMPLIMIENTO_RETO.md`
-- Plan de implementacion: `docs/PLAN_SOFISTICADO_IMPLEMENTACION.md`
-- Loop de revision DeepSeek: `docs/DEEPSEEK_REVIEW_LOOP.md`
+- Plan de implementación: `docs/PLAN_SOFISTICADO_IMPLEMENTACION.md`
+- Loop de revisión DeepSeek: `docs/DEEPSEEK_REVIEW_LOOP.md`
 - Perfiles de acceso: `docs/PERFILES_ACCESO.md`
-
-Estado actual recomendado para manana:
-- Cerrar P0 de reglas/score en matriz
-- Ejecutar pruebas de API y flujo UI
-- Ensayar demo de 10 minutos con preguntas del jurado
