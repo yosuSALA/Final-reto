@@ -15,7 +15,7 @@ block-beta
 
     block:PROXY["🔀 Proxy de Desarrollo"]
         columns 2
-        B1["Node.js + Express\n:8010"] B2["http-proxy-middleware\n/api → FastAPI :8000"]
+        B1["Node.js + Express\n:3000"] B2["http-proxy-middleware\n/api → FastAPI :8000"]
     end
 
     block:BACKEND["⚙️ Backend (Python 3.11)"]
@@ -25,7 +25,7 @@ block-beta
 
     block:IA["🤖 Capa de IA"]
         columns 3
-        D1["Gemini 2.5 Flash\nAuditoría facturas\n(CoT + few-shot)"] D2["DeepSeek Chat\nChatbot\nconversacional"] D3["SequenceMatcher\nSimilitud\nnarrativas S13"]
+        D1["Deepseek V4 Flash\nAuditoría facturas\n(CoT + few-shot)"] D2["DeepSeek Chat\nChatbot\nconversacional"] D3["SequenceMatcher\nSimilitud\nnarrativas S13"]
     end
 
     block:STORAGE["🗄️ Almacenamiento"]
